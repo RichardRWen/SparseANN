@@ -116,7 +116,7 @@ int main(int argc, char **argv) {
 	fprintf(stderr, "Done\n");
 
 	int *query_vectors = new int[num_queries * vector_len];
-	RAND_bytes((unsigned char*)query_vectors[0], num_queries * vector_len * sizeof(int));
+	RAND_bytes((unsigned char*)(&query_vectors[0]), num_queries * vector_len * sizeof(int));
 	std::vector<inverted_value> k_top;
 
 	fprintf(stderr, "Performing queries... ");

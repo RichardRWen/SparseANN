@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <cstdint>
 
 uint64_t MurmurHash64A(const void *key, const int len, const unsigned int seed);
 

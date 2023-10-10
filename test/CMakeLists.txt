@@ -4,6 +4,9 @@ find_package(OpenSSL REQUIRED)
 set(TEST_FILES
 	unit_linscan.cpp
 	perf_linscan.cpp
+	unit_vamana.cpp
+	read_fvecs.cpp
+	read_csr.cpp
 )
 
 foreach(TEST_FILE ${TEST_FILES})
