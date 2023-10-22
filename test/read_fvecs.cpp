@@ -20,7 +20,7 @@ int main(int argc, char **argv) {
 	}
 
 	// READ METADATA
-	uint64_t num_vecs, num_dims;
+	unsigned int num_vecs, num_dims;
 	reader.read((char*)(&num_vecs), sizeof(num_vecs));
 	reader.read((char*)(&num_dims), sizeof(num_dims));
 

@@ -3,10 +3,13 @@ find_package(OpenSSL REQUIRED)
 
 set(TEST_FILES
 	unit_linscan.cpp
-	perf_linscan.cpp
-	unit_vamana.cpp
+	#perf_linscan.cpp
+	max_sketch.cpp
 	read_fvecs.cpp
 	read_csr.cpp
+	read_gt.cpp
+	profile_sketch.cpp
+	comp_groundtruth.cpp
 )
 
 foreach(TEST_FILE ${TEST_FILES})

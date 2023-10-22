@@ -5,7 +5,7 @@
 
 int main(int argc, char **argv) {
 	if (argc <= 1) {
-		printf("Please provide vecs file to read\n");
+		printf("Please provide csr file to read\n");
 		exit(0);
 	}
 	size_t vec_to_read = 0;

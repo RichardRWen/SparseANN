@@ -112,9 +112,9 @@ public:
 		std::ofstream writer(filename);
 		if (!writer.is_open()) return false;
 		
-		size_t num_vecs = comp_vectors.size();
-		writer.write((char*)(&num_vecs), sizeof(uint64_t));
-		writer.write((char*)(&comp_len), sizeof(uint64_t));
+		unsigned int num_vecs = comp_vectors.size();
+		writer.write((char*)(&num_vecs), sizeof(unsigned int));
+		writer.write((char*)(&comp_len), sizeof(unsigned int));
 
 		for (int i = 0; i < comp_vectors.size(); i++) {
 			for (int j = 0; j < comp_len; j++) {
