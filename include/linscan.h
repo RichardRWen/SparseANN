@@ -28,7 +28,9 @@ class inverted_index {
 	unsigned int num_lists;
 	posting_list *lists;
 
-	inverted_index(const unsigned int num_lists) : num_lists(num_lists) {}
+	inverted_index(const unsigned int num_lists) : num_lists(num_lists) {
+		lists = new posting_list[num_lists];
+	}
 	inverted_index(const char *filename, const char *filetype, const size_t _num_to_read = -1ULL) {
 		if (strcmp(filetype, "csr") == 0) {
 			std::ifstream indptr_reader(filename);
