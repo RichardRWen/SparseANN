@@ -3,3 +3,4 @@ data/
 Graph-Compression/
 *.swp
 log.txt
+backup*
