@@ -28,8 +28,6 @@ int main(int argc, char **argv) {
 		std::cout << k_top[i].id << "\t" << k_top[i].value << std::endl;
 	}
 
-	delete[] inv_index.lists;
-
 	std::cout << "Test completed" << std::endl;
 	return 0;
 }

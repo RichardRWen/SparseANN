@@ -28,7 +28,7 @@ int main(int argc, char **argv) {
 	}
 
 	inverted_index<float, uint64_t> inv_index(argv[1], "csr");
-	if (inv_index.lists == NULL) {
+	if (inv_index.num_lists == 0) {
 		std::cout << "Could not read inserts\n" << std::endl;
 	}
 
@@ -75,8 +75,6 @@ int main(int argc, char **argv) {
 	query_reader.close();
 	index_reader.close();
 	value_reader.close();
-
-	delete[] inv_index.lists;
 
 	return 0;
 }

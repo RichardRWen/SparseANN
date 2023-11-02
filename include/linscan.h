@@ -26,17 +26,14 @@ class inverted_index {
 	};
 
 	unsigned int num_lists;
-	posting_list *lists;
+	std::vector<posting_list> lists;
 
-	inverted_index(const unsigned int num_lists) : num_lists(num_lists) {
-		lists = new posting_list[num_lists];
-	}
+	inverted_index(const unsigned int num_lists) : num_lists(num_lists), lists(num_lists) {}
 	inverted_index(const char *filename, const char *filetype, const size_t _num_to_read = -1ULL) {
 		if (strcmp(filetype, "csr") == 0) {
 			std::ifstream indptr_reader(filename);
 			if (!indptr_reader.is_open()) {
 				num_lists = 0;
-				lists = NULL;
 				return;
 			}
 			std::ifstream index_reader(filename);
@@ -50,7 +47,7 @@ class inverted_index {
 			data_reader.seekg((num_vecs + 4) * sizeof(uint64_t) + num_vals * sizeof(unsigned int));
 
 			num_lists = num_dims;
-			lists = new posting_list[num_dims];
+			lists.resize(num_dims);
 
 			size_t num_to_read = (_num_to_read < num_vecs ? _num_to_read : num_vecs);
 
@@ -71,7 +68,6 @@ class inverted_index {
 		}
 		else {
 			num_lists = 0;
-			lists = NULL;
 		}
 	}
 	
