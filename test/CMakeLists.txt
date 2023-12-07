@@ -14,7 +14,9 @@ set(TEST_FILES
 	high_freq_record.cpp
 	high_freq_convert.cpp
 	trec_sample.cpp
+	unit_parlay.cpp
 	reorder.cpp
+	#unit_reorder.cpp
 )
 
 foreach(TEST_FILE ${TEST_FILES})
