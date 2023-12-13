@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <cstring>
 #include <fstream>
+#include <iostream>
 #include <algorithm>
 
 template <typename val_type, typename id_type = uint64_t>
@@ -29,6 +30,7 @@ public:
 		if (strcmp(filetype, "csr") == 0) {
 			std::ifstream indptr_reader(filename);
 			if (!indptr_reader.is_open()) {
+				std::cout << "Unable to open file " << filename << " for reading" << std::endl;
 				num_lists = 0;
 				return;
 			}

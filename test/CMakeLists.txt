@@ -16,7 +16,8 @@ set(TEST_FILES
 	trec_sample.cpp
 	unit_parlay.cpp
 	reorder.cpp
-	#unit_reorder.cpp
+	unit_reorder.cpp
+	apply_ordering.cpp
 )
 
 foreach(TEST_FILE ${TEST_FILES})

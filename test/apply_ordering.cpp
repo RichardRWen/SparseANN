@@ -11,14 +11,13 @@
 
 int main(int argc, char **argv) {
 	if (argc < 4) {
-		std::cout << "Usage: " << argv[0] << " [csr infile] [sample size] [outfile]" << std::endl;
+		std::cout << "Usage: " << argv[0] << " [order infile] [csr infile] [csr outfile]" << std::endl;
 		exit(0);
 	}
 
-	coord_order order(argv[1], "csr", std::stoull(argv[2]));
-	order.reorder_seq(20, true);
+	coord_order order(argv[1], "ord");
 	
-	order.write_to_file(argv[3]);
+	order.apply_ordering(argv[2], argv[3]);
 
 	return 0;
 }
