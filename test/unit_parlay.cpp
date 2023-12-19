@@ -5,6 +5,7 @@
 #include <numeric>
 #include <vector>
 #include <unordered_set>
+#include <atomic>
 #include <string>
 #include <queue>
 #include <utility>
@@ -14,6 +15,7 @@
 #include <parlay/primitives.h>
 #include <parlay/sequence.h>
 #include <parlay/slice.h>
+#include <parlay/alloc.h>
 
 int main(int argc, char **argv) {
 	parlay::sequence<uint32_t> seq;
@@ -27,4 +29,7 @@ int main(int argc, char **argv) {
 				return (acc + ((uint64_t)x << 32));
 			}, (uint64_t)0));
 	std::cout << sum << std::endl;
+
+	std::vector<std::atomic<int>> atomic_list;
+	atomic_list.emplace_back(1);
 }

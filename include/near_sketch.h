@@ -2,8 +2,6 @@
 #include <vector>
 #include <string.h>
 
-#include "hashutil.h"
-
 template <typename value_type>
 class near_sketch {
 public:
@@ -12,7 +10,7 @@ public:
 	double scale;
 	std::vector<value_type*> comp_vectors;
 
-	near_sketch(const size_t _full_len, const size_t _comp_len, const size_t _num_hash_fcns) {
+	near_sketch(const size_t _full_len, const size_t _comp_len) {
 		full_len = _full_len;
 		scale = comp_len = _comp_len;
 		scale /= full_len;
@@ -28,7 +26,7 @@ public:
 			indptr_reader.read((char*)(&num_vals), sizeof(num_vals));
 			size_t startof_indptrs = sizeof(num_vecs) + sizeof(num_dims) + sizeof(num_vals);
 			size_t startof_indices = startof_indptrs + (num_vecs + 1) * sizeof(uint64_t);
-			size_t startof_data    = startof_indices + num_vals * sizeof(unsigned int);
+			size_t startof_data    = startof_indices + num_vals * sizeof(uint32_t);
 
 			std::ifstream index_reader(filename);
 			index_reader.seekg(startof_indices);
@@ -41,17 +39,15 @@ public:
 			size_t num_to_read = (_num_to_read < num_vecs ? _num_to_read : num_vecs);
 			unsigned int index_temp;
 			value_type data_temp;
-			size_t comp_index_temp;
+			uint64_t comp_index_temp;
 			for (size_t i = 0; i < num_to_read; i++) {
 				indptr_reader.read((char*)(&indptr_end), sizeof(indptr_end));
 				value_type *compressed = new value_type[comp_len];
 				for (; indptr_curr < indptr_end; indptr_curr++) {
 					index_reader.read((char*)(&index_temp), sizeof(index_temp));
 					value_reader.read((char*)(&data_temp), sizeof(data_temp));
-					for (int j = 0; j < num_hash_fcns; j++) {
-						comp_index_temp = hash(index_temp, hash_fcn_seeds[j]) % comp_len;
-						if (data_temp > compressed[comp_index_temp]) compressed[comp_index_temp] = data_temp;
-					}
+					comp_index_temp = (uint64_t)(scale * index_temp);
+					if (data_temp > compressed[comp_index_temp]) compressed[comp_index_temp] = data_temp;
 				}
 				comp_vectors.push_back(compressed);
 			}
@@ -66,37 +62,17 @@ public:
 	}
 	near_sketch(const char *filename, const char *filetype, const size_t _comp_len) : near_sketch(filename, filetype, -1ull, _comp_len) {}
 
-	static inline uint64_t hash(int key, unsigned int seed) {
-		return MurmurHash64A(&key, sizeof(key), seed);
-	}
-
 	void insert(value_type *vector) {
 		value_type *compressed = new value_type[comp_len];
 		for (int i = 0; i < full_len; i++) {
-			if (vector[i] <= 0) continue;
-			for (int j = 0; j < num_hash_fcns; j++) {
-				size_t index = hash(i, hash_fcn_seeds[j]) % comp_len;
-				if (vector[i] > compressed[index]) compressed[index] = vector[i];
-			}
+			uint64_t index = (uint64_t)(scale * i);
+			if (vector[i] > compressed[index]) compressed[index] = vector[i];
 		}
 		comp_vectors.push_back(compressed);
 	}
 
 	value_type get(size_t vector_index, size_t coord_index) {
-		value_type min = comp_vectors[vector_index][hash(coord_index, hash_fcn_seeds[0]) % comp_len];
-		for (int i = 1; i < num_hash_fcns; i++) {
-			size_t comp_index = hash(coord_index, hash_fcn_seeds[i]) % comp_len;
-			if (comp_vectors[vector_index][comp_index] < min) min = comp_vectors[vector_index][comp_index];
-		}
-		return min;
-	}
-
-	void free() {
-		for (int i = 0; i < comp_vectors.size(); i++) {
-			if (comp_vectors[i] != NULL) delete[] comp_vectors[i];
-			comp_vectors[i] = NULL;
-		}
-		delete[] hash_fcn_seeds;
+		return comp_vectors[vector_index][(uint64_t)(scale * coord_index)];
 	}
 
 	bool write_to_file(char *filename) {

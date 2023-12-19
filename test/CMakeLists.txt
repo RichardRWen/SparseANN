@@ -5,9 +5,11 @@ set(TEST_FILES
 	unit_linscan.cpp
 	#perf_linscan.cpp
 	max_sketch.cpp
+	near_sketch.cpp
 	read_fvecs.cpp
 	read_csr.cpp
 	write_csr.cpp
+	csr_to_fvecs.cpp
 	read_gt.cpp
 	profile_sketch.cpp
 	comp_groundtruth.cpp
