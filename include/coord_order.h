@@ -63,36 +63,37 @@ struct coord_order {
 		}
 	}
 
-	void initial_partition_seq(const uint32_t start, const uint32_t end) {
+	void shingle_order_seq(const uint32_t start, const uint32_t end) {
 		hasher_murmur64a hasher;
 		std::vector<uint32_t> indices(end - start);
 		std::iota(indices.begin(), indices.end(), 0);
 
+		// Find the shingle of each dimension ie. the lowest hash among vectors nonzero in that dimension
 		std::vector<uint32_t> shingles(end - start, -1);
 		for (int i = 0; i < shingles.size(); i++) {
-			// sort by shingles
 			for (uint32_t j = 0; j < inv_index.posting_lists[order[start + i]].size(); j++) {
 				uint32_t hash = (uint32_t)hasher(inv_index.posting_lists[order[start + i]][j].id);
 				if (hash < shingles[i]) shingles[i] = hash;
 			}
 		}
 
+		// Sort dimensions by their shingles
 		std::sort(indices.begin(), indices.end(), [shingles] (uint32_t a, uint32_t b) -> bool {
 				return shingles[a] < shingles[b];
-				});
+			});
+		// Use the shingles list as a temp storage for the coordinate order
 		for (int i = 0; i < shingles.size(); i++) {
 			shingles[i] = order[start + i];
 		}
+		// Reorder dimensions by the sorted shingle ordering
 		for (int i = 0; i < shingles.size(); i++) {
 			order[start + i] = shingles[indices[i]];
 			order_map[order[start + i]] = start + i;
 		}
 	}
 
-	void initial_partition(const uint32_t start, const uint32_t end) {
+	void shingle_order(const uint32_t start, const uint32_t end) {
 		hasher_murmur64a hasher;
-		std::vector<uint32_t> indices(end - start);
-		std::iota(indices.begin(), indices.end(), 0);
 
 		std::vector<uint32_t> shingles(end - start, -1);
 		for (int i = 0; i < shingles.size(); i++) {
@@ -103,16 +104,16 @@ struct coord_order {
 			}
 		}
 
-		std::sort(indices.begin(), indices.end(), [shingles] (uint32_t a, uint32_t b) -> bool {
+		auto indices = parlay::sort(
+			parlay::tabulate(end - start, [] (size_t i) {return i;}), 
+			[&shingles] (uint32_t a, uint32_t b) -> bool {
 				return shingles[a] < shingles[b];
-				});
-		for (int i = 0; i < shingles.size(); i++) {
-			shingles[i] = order[start + i];
-		}
-		for (int i = 0; i < shingles.size(); i++) {
+			});
+		parlay::copy(parlay::make_slice(&order[start], &order[start + shingles.size()]), parlay::make_slice(shingles));
+		parlay::parallel_for(0, shingles.size(), [&] (size_t i) {
 			order[start + i] = shingles[indices[i]];
 			order_map[order[start + i]] = start + i;
-		}
+		}, 100);
 	}
 
 	double partial_move_gain_seq(const uint32_t vector_id, std::unordered_set<uint32_t> &set1, std::unordered_set<uint32_t> &set2) {
@@ -138,7 +139,7 @@ struct coord_order {
 	}
 
 	bool iterated_swap_seq(const uint32_t start, const uint32_t end) {
-		if (end - start < 2) return false;
+		if (end - start <= 2) return false;
 		uint32_t set_size = (end - start) / 2;
 		uint32_t mid = start + set_size;
 
@@ -317,7 +318,7 @@ struct coord_order {
 		queue.push(std::make_pair(0, order.size()));
 		
 		while (!queue.empty()) {
-			initial_partition_seq(queue.front().first, queue.front().second);
+			shingle_order_seq(queue.front().first, queue.front().second);
 			for (int i = 0; i < max_iters; i++) {
 				if (!iterated_swap_seq(queue.front().first, queue.front().second)) break;
 			}
@@ -332,12 +333,12 @@ struct coord_order {
 	}
 
 	void reorder(const uint32_t max_iters = 20, const bool verbose = false) {
-		//if (verbose) std::cout << "Initial log gap cost:\t" << _log_gap_cost(0, order.size()) << std::endl;
+		if (verbose) std::cout << "Initial log gap cost:\t" << log_gap_cost() << std::endl;
 		std::queue<std::pair<uint32_t, uint32_t>> queue;
 		queue.push(std::make_pair(0, order.size()));
 		
 		while (!queue.empty()) {
-			initial_partition(queue.front().first, queue.front().second);
+			shingle_order(queue.front().first, queue.front().second);
 			for (int i = 0; i < max_iters; i++) {
 				iterated_swap(queue.front().first, queue.front().second);
 			}
@@ -349,6 +350,8 @@ struct coord_order {
 			//if (verbose && queue.front().second == order.size()) std::cout << "Gap cost after level size " << (queue.front().second - queue.front().first) << ":\t" << _log_gap_cost(0, order.size()) << std::endl;
 			queue.pop();
 		}
+
+		if (verbose) std::cout << "Final log gap cost:\t" << log_gap_cost() << std::endl;
 	}
 
 	void write_to_file(const char *filename) {
@@ -516,17 +519,11 @@ struct coord_order {
 		return log_gap_cost / (coords.size() - 1);
 	}
 	double log_gap_cost() {
-		auto iota = parlay::iota<uint32_t>(fwd_index.points.size());
-		/*double log_gap_cost = parlay::reduce(parlay::make_slice(iota.begin(), iota.end()),
-			parlay::binary_op([this] (double acc, uint32_t i) -> double {
-				return acc + _log_gap_cost(fwd_index.points[i]);
-			}, (double)0));
-		return (log_gap_cost + _log_gap_cost(fwd_index.points[0])) / fwd_index.points.size();*/
-		double log_gap_cost = par_reduce(parlay::make_slice(iota.begin(), iota.end()),
-			parlay::binary_op([this] (double acc, uint32_t i) -> double {
-				return acc + _log_gap_cost(fwd_index.points[i]);
-			}, (double)0));
-		return log_gap_cost / fwd_index.points.size();
+		auto partial_log_gap_costs = parlay::delayed_tabulate(fwd_index.points.size(), [this](size_t i) {
+				return _log_gap_cost(fwd_index.points[i]);
+			});
+		double total_log_gap_cost = parlay::reduce(parlay::make_slice(partial_log_gap_costs.begin(), partial_log_gap_costs.end()));
+		return total_log_gap_cost / fwd_index.points.size();
 	}
 	/*double _log_gap_cost(const uint32_t start, const uint32_t end) {
 		double total_log_gap_cost = 0;

@@ -42,7 +42,7 @@ void print_state(coord_order &order) {
 		for (; index < order.order.size(); index++) std::cout << ". ";
 		std::cout << "\t" << order._log_gap_cost(order.fwd_index.points[i]) << std::endl;
 	}
-	std::cout << "Avg gap cost:\t" << order.log_gap_cost_seq() << std::endl;
+	std::cout << "Avg gap cost:\t" << order.log_gap_cost() << std::endl;
 }
 
 void print_move_gains(coord_order &order, uint32_t start, uint32_t end) {
@@ -93,6 +93,18 @@ double get_partition_cost(coord_order &order, uint32_t start, uint32_t end) {
 	for (int i = mid;   i < end; i++) set2.insert(order.order[i]);
 
 	double partition_cost = 0;
+	for (auto point : order.fwd_index.points) {
+		uint32_t deg1 = 0, deg2 = 0;
+		for (auto coord : point) {
+			if (set1.find(coord.index) != set1.end()) deg1++;
+			else if (set2.find(coord.index) != set2.end()) deg2++;
+		}
+		partition_cost += deg1 * log((double)(set1.size() + 1) / (deg1 + 1))
+			+ deg2 * log((double)(set2.size() + 1) / (deg2 + 1));
+		// I decided to add 1 to the numerators here so that the log can't be negative
+	}
+
+	/*double partition_cost = 0;
 	for (int i = start; i < end; i++) {
 		for (auto vector : order.inv_index.posting_lists[order.order[i]]) {
 			uint32_t deg1 = 0, deg2 = 0;
@@ -103,7 +115,7 @@ double get_partition_cost(coord_order &order, uint32_t start, uint32_t end) {
 			partition_cost += deg1 * log((double)(set1.size()) / (deg1 + 1))
 							+ deg2 * log((double)(set2.size()) / (deg2 + 1)); // This could end up being negative. Is that intentional? Maybe add one to each of the set sizes as well?
 		}
-	}
+	}*/
 
 	return partition_cost;
 }
@@ -123,6 +135,7 @@ int main(int argc, char **argv) {
 	if (sample_size == -1ull) std::cout << "Reading all lines from " << argv[1] << std::endl;
 	else std::cout << "Reading " << sample_size << " lines from " << argv[1] << std::endl;
 	coord_order order(argv[1], "csr", sample_size);
+	if (!order.inv_index.num_lists) exit(0);
 	
 	std::cout << "===Initial State===" << std::endl;
 	print_state(order);
@@ -132,8 +145,9 @@ int main(int argc, char **argv) {
 	std::cout << std::endl;
 	print_level(1);
 
+	std::cout << "Treating sets of size 100\%" << std::endl;
 	std::cout << "Applying min hash" << std::endl;
-	order.initial_partition_seq(0, order.order.size());
+	order.shingle_order(0, order.order.size());
 	std::cout << "===State after min hash===" << std::endl;
 	print_state(order);
 	std::cout << "Partition cost:\t" << get_partition_cost(order, 0, order.order.size()) << std::endl;
@@ -169,9 +183,10 @@ int main(int argc, char **argv) {
 	print_level(2);
 
 	uint32_t mid = order.order.size() / 2;
+	std::cout << "Treating sets of size 50\%" << std::endl;
 	std::cout << "Applying min hash" << std::endl;
-	order.initial_partition_seq(0, mid);
-	order.initial_partition_seq(mid, order.order.size());
+	order.shingle_order(0, mid);
+	order.shingle_order(mid, order.order.size());
 	print_state(order);
 	std::cout << "Partition cost:\t" << get_partition_cost(order, 0, mid) + get_partition_cost(order, mid, order.order.size()) << std::endl;
 
@@ -182,6 +197,30 @@ int main(int argc, char **argv) {
 	order.iterated_swap_seq(0, mid);
 	order.iterated_swap_seq(mid, order.order.size());
 	std::cout << "===State after 1 swap round===" << std::endl;
+	print_state(order);
+	std::cout << "Partition cost:\t" << get_partition_cost(order, 0, mid) + get_partition_cost(order, mid, order.order.size()) << std::endl;
+
+	std::cout << std::endl;
+	print_move_gains(order, 0, mid);
+	print_move_gains(order, mid, order.order.size());
+	std::cout << "Applying 1 swap round" << std::endl;
+	order.iterated_swap_seq(0, mid);
+	order.iterated_swap_seq(mid, order.order.size());
+	std::cout << "===State after 2 swap rounds===" << std::endl;
+	print_state(order);
+	std::cout << "Partition cost:\t" << get_partition_cost(order, 0, mid) + get_partition_cost(order, mid, order.order.size()) << std::endl;
+
+	std::cout << std::endl;
+	print_move_gains(order, 0, mid);
+	print_move_gains(order, mid, order.order.size());
+	std::cout << "Applying 18 swap rounds" << std::endl;
+	for (int i = 0; i < 18; i++) {
+		if (!order.iterated_swap_seq(0, mid)) break;
+	}
+	for (int i = 0; i < 18; i++) {
+		if (!order.iterated_swap_seq(mid, order.order.size())) break;
+	}
+	std::cout << "===State after 20 swap rounds===" << std::endl;
 	print_state(order);
 	std::cout << "Partition cost:\t" << get_partition_cost(order, 0, mid) + get_partition_cost(order, mid, order.order.size()) << std::endl;
 
