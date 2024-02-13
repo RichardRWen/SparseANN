@@ -1,3 +1,5 @@
+#include "ground_truth.h"
+
 template <typename id_type>
 parlay::sequence<parlay::sequence<id_type>> ground_truth(char *inserts_file, char *queries_file, int k = 10) { // Does returning a sequence in this way result in copying overheads?
 	// create forward index from file
@@ -11,7 +13,24 @@ parlay::sequence<parlay::sequence<id_type>> ground_truth(char *inserts_file, cha
 	// call neighbors() on every query in parallel
 	parlay::sequence<parlay::sequence<id_type>> ground_truth(fwd_index.points.size(),
 		[&inv_index, &queries] (size_t i) -> parlay::sequence<id_type> {
-			// TODO: update neighbors() to return sequence and read from range
+			auto neighbors_dist = inv_index.neighbors(queries.points[i], k);
+			parlay::sequence<id_type> neighbors(neighbors_dist.size(), 
+				[&neighbors_dist] (size_t i) -> id_type {
+					return neighbors_dist[i].first;
+				}
+			);
+			return neighbors;
+		}
+	);
+	return ground_truth;
+}
+
+template <typename id_type>
+parlay::sequence<parlay::sequence<id_type>> ground_truth(forward_index<id_type>& inserts, forward_index<id_type>& queries, int k = 10) {
+	inverted_index<float> inv_index(fwd_index);
+
+	parlay::sequence<parlay::sequence<id_type>> ground_truth(fwd_index.points.size(),
+		[&inv_index, &queries] (size_t i) -> parlay::sequence<id_type> {
 			return inv_index.neighbors(queries.points[i], k);
 		}
 	);
@@ -19,7 +38,7 @@ parlay::sequence<parlay::sequence<id_type>> ground_truth(char *inserts_file, cha
 }
 
 template <typename id_type>
-double recall(parlay::sequence<parlay::sequence<id_type>>& ground_truth, parlay::sequence<parlay::sequence<id_type>>& neighbors, int k) {
+double recall(parlay::sequence<parlay::sequence<id_type>>& ground_truth, parlay::sequence<parlay::sequence<id_type>>& neighbors, int k = 10) {
 	double recall = 0;
 	int i;
 	for (i = 0; i < ground_truth.size() && i < neighbors.size(); i++) {

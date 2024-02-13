@@ -9,6 +9,8 @@
 #include <fstream>
 #include <algorithm>
 
+#include <parlay/sequence.h>
+
 template <typename val_type = float>
 class forward_index {
 public:
@@ -37,17 +39,16 @@ public:
 
 			uint64_t indptr_start, indptr_end;
 			uint32_t index;
-			float value;
+			val_type value;
 			indptr_reader.read((char*)(&indptr_end), sizeof(uint64_t));
 			for (size_t i_vecs = 0; i_vecs < num_to_read; i_vecs++) {
-				std::vector<coord> point;
+				parlay::sequence<std::pair<uint32_t, val_type>> point;
 				indptr_start = indptr_end;
 				indptr_reader.read((char*)(&indptr_end), sizeof(uint64_t));
 				for (; indptr_start < indptr_end; indptr_start++) {
 					index_reader.read((char*)(&index), sizeof(uint32_t));
-					value_reader.read((char*)(&value), sizeof(float));
-					coord new_coord(index, value);
-					point.push_back(new_coord);
+					value_reader.read((char*)(&value), sizeof(val_type));
+					point.push_back(std::make_pair(index, value));
 				}
 				points.push_back(point);
 			}
@@ -60,7 +61,7 @@ public:
 		}
 	}
 
-	val_type dist(std::vector<std::pair<uint32_t, val_type>>& p1, std::vector<std::pair<uint32_t, val_type>>& p2) {
+	static val_type dist(parlay::sequence<std::pair<uint32_t, val_type>>& p1, parlay::sequence<std::pair<uint32_t, val_type>>& p2) {
 		val_type total = (val_type)0;
 		for (int i = 0, j = 0; i < p1.size() && j < p2.size(); ) {
 			if (p1[i].first < p2[j].first) i++;

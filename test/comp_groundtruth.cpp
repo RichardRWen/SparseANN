@@ -1,25 +1,25 @@
 #include <iostream>
 #include <fstream>
 #include <cstdint>
+#include <algorithm> // for min
+#include <stdlib.h> // for strtoull
 #include <cassert>
 
-#include "../include/linscan.h"
+#include "forward_index.h"
+#include "ground_truth.h"
 
 int k = 100;
 
 int main(int argc, char **argv) {
 	if (argc < 4) {
-		std::cout << "Usage: " << argv[0] << " [path to inserts .csr] [path to queries .csr] [path to outfile]" << std::endl;
+		std::cout << "Usage: " << argv[0] << " [path to inserts .csr] [path to queries .csr] [path to outfile] [optional number of queries]" << std::endl;
 		exit(0);
 	}
 
-	std::ifstream query_reader(argv[2]);
-	if (!query_reader.is_open()) {
-		std::cout << "Could not read queries\n" << std::endl;
-		exit(0);
+	size_t num_queries_to_read = (size_t)(-1);
+	if (argc > 4) {
+		num_queries_to_read = strtoull(argv[4], NULL, 10);
 	}
-	std::ifstream index_reader(argv[2]);
-	std::ifstream value_reader(argv[2]);
 
 	std::ofstream writer(argv[3]);
 	if (!writer.is_open()) {
@@ -27,54 +27,56 @@ int main(int argc, char **argv) {
 		exit(0);
 	}
 
-	inverted_index<float, uint64_t> inv_index(argv[1], "csr");
-	if (inv_index.num_lists == 0) {
-		std::cout << "Could not read inserts\n" << std::endl;
+	forward_index<float> inserts(argv[1], "csr");
+	if (inserts.points.size() == 0) {
+		std::cout << "Could not read inserts file\n" << std::endl;
+		exit(0);
 	}
 
-	uint64_t num_vecs, num_dims, num_vals;
-	query_reader.read((char*)(&num_vecs), sizeof(uint64_t));
-	query_reader.read((char*)(&num_dims), sizeof(uint64_t));
-	query_reader.read((char*)(&num_vals), sizeof(uint64_t));
+	forward_index<float> queries(argv[2], "csr", num_queries_to_read);
+	if (queries.points.size() == 0) {
+		std::cout << "Could not read queries file\n" << std::endl;
+		exit(0);
+	}
 	
-	index_reader.seekg((num_vecs + 4) * sizeof(uint64_t));
-	value_reader.seekg((num_vecs + 4) * sizeof(uint64_t) + num_vals * sizeof(unsigned int));
+	uint32_t k = 10;
+	auto gt = ground_truth(inserts, queries, k);
 
-	writer.write((char*)(&num_vecs), sizeof(uint64_t));
-	writer.write((char*)(&k), sizeof(uint64_t));
+	// verifying the head of the ground truth is correct
+	std::cout << "Verifying correctness..." << std::endl;
+	int gt_wrong = -1;
+	for (int i = 0; i < std::min((int)gt.size(), 20); i++) {
+		int gt_count = 0;
+		float gt_dist = forward_index<float>::dist(inserts.points[gt[i][0]], queries.points[i]);
+		for (int j = 0; j < inserts.points.size(); j++) {
+			if (forward_index<float>::dist(inserts.points[j], queries.points[i]) < gt_dist) gt_count++;
+		}
 
-	uint64_t indptr_start, indptr_end;
-	query_reader.read((char*)(&indptr_end), sizeof(uint64_t));
-	float *vector = new float[num_dims];
-	unsigned int temp_index;
-	float temp_value;
-	for (int i = 0; i < num_vecs; i++) {
-		indptr_start = indptr_end;
-		query_reader.read((char*)(&indptr_end), sizeof(uint64_t));
-		bzero(vector, num_dims * sizeof(float));
-		for (; indptr_start < indptr_end; indptr_start++) {
-			index_reader.read((char*)(&temp_index), sizeof(unsigned int));
-			value_reader.read((char*)(&temp_value), sizeof(float));
-			vector[temp_index] = temp_value;
+		if (gt_count >= k) {
+			gt_wrong = i;
+			break;
 		}
-		auto neighbors = inv_index.neighbors(vector, k);
-		for (int j = 0; j < neighbors.size(); j++) {
-			writer.write((char*)(&neighbors[j].id), sizeof(uint64_t));
-			writer.write((char*)(&neighbors[j].value), sizeof(float));
-		}
-		if (i < 10) {
-			std::cout << "Query " << i << std::endl;
-			for (int j = 0; j < neighbors.size(); j++) {
-				std::cout << "(" << neighbors[j].id << ", " << neighbors[j].value << ")\t";
-			}
-			std::cout << std::endl;
+	}
+	if (gt_wrong < 0) {
+		std::cout << "Head is correct" << std::endl;
+	}
+	else {
+		std::cout << "Head is incorrect at query " << gt_wrong << std::endl;
+		std::cout << "Head:" << std::endl;
+		for (int i = 0; i < k; i++) {
+			float dist = forward_index<float>::dist(inserts.points[gt[gt_wrong][i]], queries.points[gt_wrong]);
+			std::cout << "Point " << gt[gt_wrong][i] << " with distance " << dist << std::endl;
 		}
 	}
 
+	// write ground truth to file
+	uint32_t num_queries = queries.points.size();
+	writer.write((char*)(&num_queries), sizeof(uint32_t));
+	writer.write((char*)(&k), sizeof(uint32_t));
+	for (int i = 0; i < gt.size(); i++) {
+		writer.write((char*)(&gt[i][0]), k * sizeof(uint32_t));
+	}
 	writer.close();
-	query_reader.close();
-	index_reader.close();
-	value_reader.close();
 
 	return 0;
 }

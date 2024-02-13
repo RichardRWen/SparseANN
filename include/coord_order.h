@@ -27,7 +27,7 @@ struct coord_order {
 	std::vector<uint32_t> order; // what coordinate is in each position
 	std::vector<uint32_t> order_map; // what position each coordinate is in
 	inverted_index<float, uint32_t> inv_index;
-	forward_index<float, uint32_t> fwd_index;
+	forward_index<float> fwd_index;
 
 	coord_order(const uint32_t dims) : order(dims, 0), order_map(dims, 0), inv_index(dims), fwd_index(dims) {
 		std::iota(order.begin(), order.end(), (uint32_t)0);
@@ -72,7 +72,7 @@ struct coord_order {
 		std::vector<uint32_t> shingles(end - start, -1);
 		for (int i = 0; i < shingles.size(); i++) {
 			for (uint32_t j = 0; j < inv_index.posting_lists[order[start + i]].size(); j++) {
-				uint32_t hash = (uint32_t)hasher(inv_index.posting_lists[order[start + i]][j].id);
+				uint32_t hash = (uint32_t)hasher(inv_index.posting_lists[order[start + i]][j].first);
 				if (hash < shingles[i]) shingles[i] = hash;
 			}
 		}
@@ -99,7 +99,7 @@ struct coord_order {
 		for (int i = 0; i < shingles.size(); i++) {
 			// sort by shingles
 			for (uint32_t j = 0; j < inv_index.posting_lists[order[start + i]].size(); j++) {
-				uint32_t hash = (uint32_t)hasher(inv_index.posting_lists[order[start + i]][j].id);
+				uint32_t hash = (uint32_t)hasher(inv_index.posting_lists[order[start + i]][j].first);
 				if (hash < shingles[i]) shingles[i] = hash;
 			}
 		}
@@ -119,8 +119,8 @@ struct coord_order {
 	double partial_move_gain_seq(const uint32_t vector_id, std::unordered_set<uint32_t> &set1, std::unordered_set<uint32_t> &set2) {
 		uint32_t deg1 = 0, deg2 = 0;
 		for (auto coord : fwd_index.points[vector_id]) {
-			if (set1.find(coord.index) != set1.end()) deg1++;
-			else if (set2.find(coord.index) != set2.end()) deg2++;
+			if (set1.find(coord.first) != set1.end()) deg1++;
+			else if (set2.find(coord.first) != set2.end()) deg2++;
 		}
 
 		double partial_gain = 0; // Might want to ask about whether we should account for the set sizes changing
@@ -133,7 +133,7 @@ struct coord_order {
 	double move_gain_seq(const uint32_t coord_id, std::unordered_set<uint32_t> &set1, std::unordered_set<uint32_t> &set2) {
 		double move_gain = 0;
 		for (auto vector : inv_index.posting_lists[coord_id]) {
-			move_gain += partial_move_gain_seq(vector.id, set1, set2);
+			move_gain += partial_move_gain_seq(vector.first, set1, set2);
 		}
 		return move_gain;
 	}
@@ -188,11 +188,11 @@ struct coord_order {
 		return true;
 	}
 
-	std::pair<uint32_t, uint32_t> _move_gain(std::vector<forward_index<float, uint32_t>::coord> &list, size_t start, size_t end, std::unordered_set<uint32_t> &set1, std::unordered_set<uint32_t> &set2) {
+	std::pair<uint32_t, uint32_t> _move_gain_set_count(parlay::sequence<std::pair<uint32_t, float>> &list, size_t start, size_t end, std::unordered_set<uint32_t> &set1, std::unordered_set<uint32_t> &set2) {
 		if (end <= start) return std::make_pair<uint32_t, uint32_t>(0, 0);
 		if (end - start == 1) {
-			if (set1.find(list[start].index) != set1.end()) return std::make_pair<uint32_t, uint32_t>(1, 0); // TODO: CHECK IF THE INDICES IN LIST ARE IN REORDERED FORM OR NOT
-			else if (set2.find(list[start].index) != set2.end()) return std::make_pair<uint32_t, uint32_t>(0, 1);
+			if (set1.find(list[start].first) != set1.end()) return std::make_pair<uint32_t, uint32_t>(1, 0); // TODO: CHECK IF THE INDICES IN LIST ARE IN REORDERED FORM OR NOT
+			else if (set2.find(list[start].first) != set2.end()) return std::make_pair<uint32_t, uint32_t>(0, 1);
 			else return std::make_pair<uint32_t, uint32_t>(0, 0);
 		}
 		
@@ -200,18 +200,18 @@ struct coord_order {
 		uint32_t mid = (start + end) / 2;
 		parlay::par_do(
 		[&]() {
-			gain1 = _move_gain(list, start, mid, set1, set2);
+			gain1 = _move_gain_set_count(list, start, mid, set1, set2);
 		},
 		[&]() {
-			gain2 = _move_gain(list, mid, end, set1, set2);
+			gain2 = _move_gain_set_count(list, mid, end, set1, set2);
 		});
 
 		return std::make_pair<uint32_t, uint32_t>(gain1.first + gain2.first, gain1.second + gain2.second);
 	}
-	double _move_gain(std::vector<inverted_index<float, uint32_t>::posted_value> &p_list, uint32_t start, uint32_t end, std::unordered_set<uint32_t> &set1, std::unordered_set<uint32_t> &set2) {
+	double _move_gain(parlay::sequence<std::pair<uint32_t, float>> &p_list, uint32_t start, uint32_t end, std::unordered_set<uint32_t> &set1, std::unordered_set<uint32_t> &set2) {
 		if (end <= start) return 0;
 		if (end - start == 1) {
-			std::pair<uint32_t, uint32_t> deg = _move_gain(fwd_index.points[p_list[start].id], 0, fwd_index.points[p_list[start].id].size(), set1, set2);
+			std::pair<uint32_t, uint32_t> deg = _move_gain_set_count(fwd_index.points[p_list[start].first], 0, fwd_index.points[p_list[start].first].size(), set1, set2);
 
 			double partial_gain = 0; // NOTE: I think these calcs may be wrong - check the seq version
 			partial_gain -= log((double)(set1.size()) / (deg.first + 1)) * (deg.first + 1);
@@ -234,11 +234,11 @@ struct coord_order {
 		return gain1 + gain2;
 	}
 
-	std::pair<uint32_t, uint32_t> _get_degrees(std::vector<forward_index<float, uint32_t>::coord> &vec, std::unordered_set<uint32_t> &set1, std::unordered_set<uint32_t> &set2) {
+	std::pair<uint32_t, uint32_t> _get_degrees(parlay::sequence<std::pair<uint32_t, float>> &vec, std::unordered_set<uint32_t> &set1, std::unordered_set<uint32_t> &set2) {
 		auto partial_degrees = parlay::delayed_tabulate(vec.size(),
 			[&vec, &set1, &set2] (size_t i) -> std::pair<uint32_t, uint32_t> {
-				if (set1.find(vec[i].index) != set1.end()) return std::make_pair<uint32_t, uint32_t>(1, 0);
-				else if (set2.find(vec[i].index) != set2.end()) return std::make_pair<uint32_t, uint32_t>(0, 1);
+				if (set1.find(vec[i].first) != set1.end()) return std::make_pair<uint32_t, uint32_t>(1, 0);
+				else if (set2.find(vec[i].first) != set2.end()) return std::make_pair<uint32_t, uint32_t>(0, 1);
 				else return std::make_pair<uint32_t, uint32_t>(0, 0);
 			});
 		std::pair<uint32_t, uint32_t> degrees = parlay::reduce(parlay::make_slice(partial_degrees.begin(), partial_degrees.end()),
@@ -250,7 +250,7 @@ struct coord_order {
 	double _move_gain(const uint32_t index, std::unordered_set<uint32_t> &set1, std::unordered_set<uint32_t> &set2) {
 		auto partial_move_gains = parlay::delayed_tabulate(inv_index.posting_lists[index].size(),
 			[this, index, &set1, &set2] (size_t i) -> double {
-				std::pair<uint32_t, uint32_t> deg = _get_degrees(fwd_index.points[inv_index.posting_lists[index][i].id], set1, set2);
+				std::pair<uint32_t, uint32_t> deg = _get_degrees(fwd_index.points[inv_index.posting_lists[index][i].first], set1, set2);
 
 				double partial_gain = 0;
 				partial_gain -= log((double)(set1.size()) / (deg.first + 1)) * (deg.first + 1);
@@ -483,12 +483,12 @@ struct coord_order {
 			std::cout << std::endl;*/
 			std::sort(indices.begin(), indices.end(), [this, &coords] (const uint32_t a, const uint32_t b) -> bool {
 					//std::cout << a << " " << coords[a].index << " " << b << " " << coords[b].index << std::endl;
-					return order_map[coords[a].index] < order_map[coords[b].index];
+					return order_map[coords[a].first] < order_map[coords[b].first];
 				});
 
 			double partial_log_gap_cost = 0;
 			for (int i = 1; i < coords.size(); i++) {
-				partial_log_gap_cost += log(order_map[coords[indices[i]].index] - order_map[coords[indices[i - 1]].index]);
+				partial_log_gap_cost += log(order_map[coords[indices[i]].first] - order_map[coords[indices[i - 1]].first]);
 			}
 			total_log_gap_cost += partial_log_gap_cost / (coords.size() - 1);
 		}
@@ -496,24 +496,27 @@ struct coord_order {
 		return total_log_gap_cost / fwd_index.points.size();
 	}
 
-	double _log_gap_cost(const std::vector<forward_index<float, uint32_t>::coord> &coords) {
+	double _log_gap_cost(const parlay::sequence<std::pair<uint32_t, float>> &coords) {
 		if (coords.size() <= 1) {
 			return 0;
 		}
 
-		parlay::sequence<uint32_t> indices(coords.size());
-		auto iota = parlay::iota<uint32_t>(coords.size());
-		parlay::copy(parlay::make_slice(iota.begin(), iota.end()), parlay::make_slice(indices.begin(), indices.end()));
+		auto iota = parlay::sequence<uint32_t>(coords.size()); // TODO: check to see if this iota is needed
+		auto indices = parlay::sequence<uint32_t>::from_function(coords.size(),
+			[] (size_t i) {
+				return i;
+			}
+		);
 
 		parlay::sort_inplace(parlay::make_slice(indices.begin(), indices.end()),
 			[this, &coords] (const uint32_t a, const uint32_t b) -> bool {
-				return order_map[coords[a].index] < order_map[coords[b].index];
+				return order_map[coords[a].first] < order_map[coords[b].first];
 			});
 
 		double log_gap_cost = par_reduce(parlay::make_slice(iota.begin() + 1, iota.end()),
 			parlay::binary_op([this, &coords, &indices] (double acc, uint32_t x) -> double {
-				assert(order_map[coords[indices[x - 1]].index] < order_map[coords[indices[x]].index]);
-				return acc + log(order_map[coords[indices[x]].index] - order_map[coords[indices[x - 1]].index]);
+				assert(order_map[coords[indices[x - 1]].first] < order_map[coords[indices[x]].first]);
+				return acc + log(order_map[coords[indices[x]].first] - order_map[coords[indices[x - 1]].first]);
 			}, (double)0));
 
 		return log_gap_cost / (coords.size() - 1);

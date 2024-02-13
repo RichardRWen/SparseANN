@@ -30,12 +30,12 @@ void print_state(coord_order &order) {
 		std::iota(indices.begin(), indices.end(), uint32_t(0));
 		std::sort(indices.begin(), indices.end(),
 			[&order, i] (uint32_t a, uint32_t b) -> bool {
-				return order.order_map[order.fwd_index.points[i][a].index] < order.order_map[order.fwd_index.points[i][b].index];
+				return order.order_map[order.fwd_index.points[i][a].first] < order.order_map[order.fwd_index.points[i][b].first];
 			});
 
 		size_t index = 0;
 		for (size_t j = 0; j < indices.size(); j++) {
-			for (; index < order.order_map[order.fwd_index.points[i][indices[j]].index]; index++) std::cout << ". ";
+			for (; index < order.order_map[order.fwd_index.points[i][indices[j]].first]; index++) std::cout << ". ";
 			std::cout << "O ";
 			index++;
 		}
@@ -96,8 +96,8 @@ double get_partition_cost(coord_order &order, uint32_t start, uint32_t end) {
 	for (auto point : order.fwd_index.points) {
 		uint32_t deg1 = 0, deg2 = 0;
 		for (auto coord : point) {
-			if (set1.find(coord.index) != set1.end()) deg1++;
-			else if (set2.find(coord.index) != set2.end()) deg2++;
+			if (set1.find(coord.first) != set1.end()) deg1++;
+			else if (set2.find(coord.first) != set2.end()) deg2++;
 		}
 		partition_cost += deg1 * log((double)(set1.size() + 1) / (deg1 + 1))
 			+ deg2 * log((double)(set2.size() + 1) / (deg2 + 1));

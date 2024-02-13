@@ -12,7 +12,7 @@ set(TEST_FILES
 	csr_to_fvecs.cpp
 	read_gt.cpp
 	profile_sketch.cpp
-	comp_groundtruth.cpp
+	#comp_groundtruth.cpp
 	high_freq_record.cpp
 	high_freq_convert.cpp
 	trec_sample.cpp

@@ -5,7 +5,7 @@
 #include "../include/linscan.h"
 
 int main(int argc, char **argv) {
-	inverted_index<uint32_t, float> inv_index(5);
+	inverted_index<float> inv_index(5);
 
 	float insert_vectors[][5] = {
 		{0, 4, 0, 0, 1},
@@ -21,11 +21,11 @@ int main(int argc, char **argv) {
 	auto k_top = inv_index.neighbors(query_vector, 3);
 
 	assert(k_top.size() == 2);
-	assert(k_top[0].id == 1 && k_top[0].value == 7);
-	assert(k_top[1].id == 0 && k_top[1].value == 8);
+	assert(k_top[0].first == 1 && k_top[0].second == 7);
+	assert(k_top[1].first == 0 && k_top[1].second == 8);
 	
 	for (int i = 0; i < k_top.size(); i++) {
-		std::cout << k_top[i].id << "\t" << k_top[i].value << std::endl;
+		std::cout << k_top[i].first << "\t" << k_top[i].second << std::endl;
 	}
 
 	std::cout << "Test completed" << std::endl;

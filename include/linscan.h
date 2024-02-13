@@ -1,5 +1,5 @@
-#ifndef _INVERTED_INDEX_H_
-#define _INVERTED_INDEX_H_
+#ifndef _SPARSE_INVERTED_INDEX_H_
+#define _SPARSE_INVERTED_INDEX_H_
 
 #include <stdlib.h>
 #include <cstdint>
@@ -82,7 +82,7 @@ public:
 		return num_coords;
 	}
 
-	parlay::sequence<id_type> neighbors(val_type *vector, int k) {
+	parlay::sequence<std::pair<id_type, val_type>> neighbors(val_type *vector, int k) {
 		// Calculate the inner products for all documents that share nonzero coordinates with the query vector
 		std::unordered_map<id_type, val_type> inner_products;
 		std::pair<typename std::unordered_map<id_type, val_type>::iterator, bool> insert_result;
@@ -100,9 +100,9 @@ public:
 		}
 
 		// Use heap to find top k inner products
-		std::vector<posted_value> heap;
+		parlay::sequence<std::pair<id_type, val_type>> heap;
 		for (auto it = inner_products.begin(); it != inner_products.end(); it++) {
-			heap.push_back(it->first);
+			heap.push_back(std::make_pair((id_type)it->first, (val_type)it->second));
 			std::push_heap(heap.begin(), heap.end(),
 				[] (std::pair<id_type, val_type>& a, std::pair<id_type, val_type>& b) -> bool {
 					return a.second > b.second;
@@ -120,7 +120,7 @@ public:
 		return heap;
 	}
 
-	parlay::sequence<id_type> neighbors(parlay::sequence<std::pair<uint32_t, val_type>>& vector, int k) {
+	parlay::sequence<std::pair<id_type, val_type>> neighbors(parlay::sequence<std::pair<uint32_t, val_type>>& vector, int k) {
 		// Calculate the inner products for all documents that share nonzero coordinates with the query vector
 		std::unordered_map<id_type, val_type> inner_products;
 		std::pair<typename std::unordered_map<id_type, val_type>::iterator, bool> insert_result;
@@ -136,9 +136,9 @@ public:
 		}
 
 		// Use heap to find top k inner products
-		std::vector<posted_value> heap;
+		parlay::sequence<std::pair<id_type, val_type>> heap;
 		for (auto it = inner_products.begin(); it != inner_products.end(); it++) {
-			heap.push_back(it->first);
+			heap.push_back(std::make_pair((id_type)it->first, (val_type)it->second));
 			std::push_heap(heap.begin(), heap.end(),
 				[] (std::pair<id_type, val_type>& a, std::pair<id_type, val_type>& b) -> bool {
 					return a.second > b.second;
@@ -153,6 +153,7 @@ public:
 			}
 		}
 
+		// TODO: pad ou if the heap doesn't have k items
 		return heap;
 	}
 };
