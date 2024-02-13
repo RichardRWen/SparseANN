@@ -1,3 +1,6 @@
+#ifndef _INVERTED_INDEX_H_
+#define _INVERTED_INDEX_H_
+
 #include <stdlib.h>
 #include <cstdint>
 #include <vector>
@@ -7,23 +10,15 @@
 #include <iostream>
 #include <algorithm>
 
-template <typename val_type, typename id_type = uint64_t>
+#include <parlay/sequence.h>
+
+#include "forward_index.h"
+
+template <typename val_type = float, typename id_type = uint32_t>
 class inverted_index {
 public:
-	struct posted_value {
-		id_type id;
-		val_type value;
-
-		posted_value() : id(0), value(0) {}
-		posted_value(id_type id, val_type value) : id(id), value(value) {}
-
-		static inline bool greater(const posted_value a, const posted_value b) {
-			return a.value > b.value;
-		}
-	};
-
-	unsigned int num_lists;
-	std::vector<std::vector<posted_value>> posting_lists;
+	uint32_t num_lists;
+	parlay::sequence<parlay::sequence<std::pair<id_type, val_type>>> posting_lists;
 
 	inverted_index(const unsigned int num_lists) : num_lists(num_lists), posting_lists(num_lists) {}
 	inverted_index(const char *filename, const char *filetype, const size_t _num_to_read = -1ULL) {
@@ -67,6 +62,14 @@ public:
 			num_lists = 0;
 		}
 	}
+	inverted_index(const forward_index<val_type>& fwd_index) {
+		num_lists = fwd_index.dims;
+		for (int i = 0; i < fwd_index.points.size(); i++) {
+			for (auto coord : fwd_index.points[i]) {
+				posting_lists[coord.first].push_back(std::make_pair(i, coord.second));
+			}
+		}
+	}
 	
 	int insert(id_type vector_id, val_type *vector) {
 		int num_coords = 0;
@@ -79,15 +82,15 @@ public:
 		return num_coords;
 	}
 
-	std::vector<posted_value> neighbors(val_type *vector, int k) {
+	parlay::sequence<id_type> neighbors(val_type *vector, int k) {
 		// Calculate the inner products for all documents that share nonzero coordinates with the query vector
 		std::unordered_map<id_type, val_type> inner_products;
 		std::pair<typename std::unordered_map<id_type, val_type>::iterator, bool> insert_result;
 		for (int i = 0; i < num_lists; i++) {
 			if (vector[i]) {
 				for (int j = 0; j < posting_lists[i].size(); j++) {
-					val_type partial_inner_product = posting_lists[i][j].value * vector[i];
-					std::pair<id_type, val_type> temp_pair(posting_lists[i][j].id, partial_inner_product);
+					val_type partial_inner_product = posting_lists[i][j].second * vector[i];
+					std::pair<id_type, val_type> temp_pair(posting_lists[i][j].first, partial_inner_product);
 					insert_result = inner_products.insert(temp_pair);
 					if (!insert_result.second) {
 						insert_result.first->second += partial_inner_product;
@@ -99,13 +102,59 @@ public:
 		// Use heap to find top k inner products
 		std::vector<posted_value> heap;
 		for (auto it = inner_products.begin(); it != inner_products.end(); it++) {
-			heap.emplace_back(it->first, it->second);
-			std::push_heap(heap.begin(), heap.end(), posted_value::greater);
+			heap.push_back(it->first);
+			std::push_heap(heap.begin(), heap.end(),
+				[] (std::pair<id_type, val_type>& a, std::pair<id_type, val_type>& b) -> bool {
+					return a.second > b.second;
+				}
+			);
 			if (heap.size() > k) {
-				std::pop_heap(heap.begin(), heap.end(), posted_value::greater);
+				std::pop_heap(heap.begin(), heap.end(),
+					[] (std::pair<id_type, val_type>& a, std::pair<id_type, val_type>& b) -> bool {
+						return a.second > b.second;
+					}
+				);
+			}
+		}
+
+		return heap;
+	}
+
+	parlay::sequence<id_type> neighbors(parlay::sequence<std::pair<uint32_t, val_type>>& vector, int k) {
+		// Calculate the inner products for all documents that share nonzero coordinates with the query vector
+		std::unordered_map<id_type, val_type> inner_products;
+		std::pair<typename std::unordered_map<id_type, val_type>::iterator, bool> insert_result;
+		for (int i = 0; i < vector.size(); i++) {
+			for (int j = 0; j < posting_lists[vector[i].first].size(); j++) {
+				val_type partial_inner_product = posting_lists[vector[i].first][j].second * vector[i].second;
+				std::pair<id_type, val_type> temp_pair(posting_lists[vector[i].first][j].first, partial_inner_product);
+				insert_result = inner_products.insert(temp_pair);
+				if (!insert_result.second) {
+					insert_result.first->second += partial_inner_product;
+				}
+			}
+		}
+
+		// Use heap to find top k inner products
+		std::vector<posted_value> heap;
+		for (auto it = inner_products.begin(); it != inner_products.end(); it++) {
+			heap.push_back(it->first);
+			std::push_heap(heap.begin(), heap.end(),
+				[] (std::pair<id_type, val_type>& a, std::pair<id_type, val_type>& b) -> bool {
+					return a.second > b.second;
+				}
+			);
+			if (heap.size() > k) {
+				std::pop_heap(heap.begin(), heap.end(),
+					[] (std::pair<id_type, val_type>& a, std::pair<id_type, val_type>& b) -> bool {
+						return a.second > b.second;
+					}
+				);
 			}
 		}
 
 		return heap;
 	}
 };
+
+#endif

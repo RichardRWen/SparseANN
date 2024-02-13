@@ -1,3 +1,6 @@
+#ifndef _FORWARD_INDEX_H_
+#define _FORWARD_INDEX_H_
+
 #include <stdlib.h>
 #include <cstdint>
 #include <vector>
@@ -6,18 +9,11 @@
 #include <fstream>
 #include <algorithm>
 
-template <typename val_type = float, typename index_type = uint32_t>
+template <typename val_type = float>
 class forward_index {
-	public:
-	struct coord {
-		index_type index;
-		val_type value;
-
-		coord(const index_type _index, const val_type _value) : index(_index), value(_value) {}
-	};
-
-	uint64_t dims;
-	std::vector<std::vector<coord>> points;
+public:
+	uint32_t dims;
+	parlay::sequence<parlay::sequence<std::pair<uint32_t, val_type>>> points;
 
 	forward_index(uint64_t _dims) : dims(_dims) {}
 	forward_index(const char *filename, const char *filetype, const size_t _num_to_read = -1ULL) {
@@ -63,4 +59,20 @@ class forward_index {
 		else {
 		}
 	}
+
+	val_type dist(std::vector<std::pair<uint32_t, val_type>>& p1, std::vector<std::pair<uint32_t, val_type>>& p2) {
+		val_type total = (val_type)0;
+		for (int i = 0, j = 0; i < p1.size() && j < p2.size(); ) {
+			if (p1[i].first < p2[j].first) i++;
+			else if (p1[i].first > p2[j].first) j++;
+			else {
+				total += p1[i].second * p2[j].second;
+				i++;
+				j++;
+			}
+		}
+		return total;
+	}
 };
+
+#endif

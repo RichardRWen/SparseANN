@@ -5,7 +5,7 @@
 #include "../include/linscan.h"
 
 int main(int argc, char **argv) {
-	inverted_index<float, uint64_t> inv_index(5);
+	inverted_index<uint32_t, float> inv_index(5);
 
 	float insert_vectors[][5] = {
 		{0, 4, 0, 0, 1},
