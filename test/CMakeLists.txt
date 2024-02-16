@@ -1,6 +1,3 @@
-set(OPENSSL_USE_STATIC_LIBS TRUE)
-find_package(OpenSSL REQUIRED)
-
 set(TEST_FILES
 	unit_linscan.cpp
 	#perf_linscan.cpp
@@ -12,7 +9,8 @@ set(TEST_FILES
 	csr_to_fvecs.cpp
 	read_gt.cpp
 	profile_sketch.cpp
-	#comp_groundtruth.cpp
+	comp_groundtruth.cpp
+	measure_recall.cpp
 	high_freq_record.cpp
 	high_freq_convert.cpp
 	trec_sample.cpp

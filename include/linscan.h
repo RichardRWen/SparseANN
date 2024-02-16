@@ -64,7 +64,8 @@ public:
 	}
 	inverted_index(const forward_index<val_type>& fwd_index) {
 		num_lists = fwd_index.dims;
-		for (int i = 0; i < fwd_index.points.size(); i++) {
+		posting_lists.resize(num_lists);
+		for (id_type i = 0; i < fwd_index.points.size(); i++) {
 			for (auto coord : fwd_index.points[i]) {
 				posting_lists[coord.first].push_back(std::make_pair(i, coord.second));
 			}

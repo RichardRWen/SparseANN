@@ -1,7 +1,8 @@
 #include "ground_truth.h"
 
-template <typename id_type>
-parlay::sequence<parlay::sequence<id_type>> ground_truth(char *inserts_file, char *queries_file, int k) { // Does returning a sequence in this way result in copying overheads?
+
+template <typename val_type, typename id_type>
+parlay::sequence<parlay::sequence<id_type>> ground_truth(char *inserts_file, char *queries_file, int k) { // Does returning a sequence in this way produce copying overheads?
 	// create forward index from file
 	// TODO: assert this is actually a .csr file
 	forward_index<float> fwd_index(inserts_file, "csr");
@@ -25,20 +26,20 @@ parlay::sequence<parlay::sequence<id_type>> ground_truth(char *inserts_file, cha
 	return ground_truth;
 }
 
-template <typename id_type>
-parlay::sequence<parlay::sequence<id_type>> ground_truth(forward_index<id_type>& inserts, forward_index<id_type>& queries, int k) {
+template <typename val_type, typename id_type>
+parlay::sequence<parlay::sequence<id_type>> ground_truth(forward_index<val_type>& inserts, forward_index<val_type>& queries, int k) {
 	inverted_index<float> inv_index(inserts);
 
-	parlay::sequence<parlay::sequence<id_type>> ground_truth(queries.points.size(),
+	parlay::sequence<parlay::sequence<id_type>> gt(queries.points.size(),
 		[&inv_index, &queries, &k] (size_t i) -> parlay::sequence<id_type> {
 			return inv_index.neighbors(queries.points[i], k);
 		}
 	);
-	return ground_truth;
+	return gt;
 }
 
 template <typename id_type>
-double recall(parlay::sequence<parlay::sequence<id_type>>& ground_truth, parlay::sequence<parlay::sequence<id_type>>& neighbors, int k) {
+double get_recall(parlay::sequence<parlay::sequence<id_type>>& ground_truth, parlay::sequence<parlay::sequence<id_type>>& neighbors, int k) {
 	double recall = 0;
 	int i;
 	for (i = 0; i < ground_truth.size() && i < neighbors.size(); i++) {

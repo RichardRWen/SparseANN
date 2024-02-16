@@ -16,6 +16,9 @@ int main(int argc, char **argv) {
 		exit(0);
 	}
 
+	auto firstgt = ground_truth(argv[1], argv[2], k);
+	std::cout << firstgt[0][0] << std::endl;
+
 	size_t num_queries_to_read = (size_t)(-1);
 	if (argc > 4) {
 		num_queries_to_read = strtoull(argv[4], NULL, 10);
