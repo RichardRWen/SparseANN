@@ -7,10 +7,22 @@
 #include <unordered_set>
 #include <algorithm>
 #include <math.h>
+#include <time.h>
 #include <numeric>
 #include <cassert>
 
 #include "../include/coord_order.h"
+
+#define RANDOM_INPUT 0
+#define MANUAL_TEST 0
+#define SEQUENTIAL 0
+#if SEQUENTIAL
+	#define SHINGLE_ORDER shingle_order_seq
+	#define ITERATED_SWAP iterated_swap_seq
+#else
+	#define SHINGLE_ORDER shingle_order
+	#define ITERATED_SWAP iterated_swap
+#endif
 
 void print_level(int level) {
 	std::cout << "===========================" << std::endl
@@ -22,6 +34,11 @@ void print_state(coord_order &order) {
 	std::cout << "Order:   \t";
 	for (size_t i = 0; i < order.order.size(); i++) {
 		std::cout << order.order[i] << " ";
+	}
+	std::cout << std::endl;
+	std::cout << "Order Map:\t";
+	for (size_t i = 0; i < order.order.size(); i++) {
+		std::cout << order.order_map[i] << " ";
 	}
 	std::cout << std::endl;
 	for (size_t i = 0; i < order.fwd_index.points.size(); i++) {
@@ -121,6 +138,26 @@ double get_partition_cost(coord_order &order, uint32_t start, uint32_t end) {
 }
 
 int main(int argc, char **argv) {
+#if RANDOM_INPUT
+	#define MANUAL_TEST 0
+	uint32_t num_dims = 100;
+	uint32_t num_points = 1000;
+	float coord_frequency = 0.1;
+	srand(time(NULL));
+	coord_order order(num_dims);
+
+	std::cout << "Generating random point set" << std::endl;
+	for (uint32_t i = 0; i < num_points; i++) {
+		order.fwd_index.points.push_back(parlay::sequence<std::pair<uint32_t, float>>(0));
+		for (uint32_t j = 0; j < num_dims; j++) {
+			if ((float)rand() / RAND_MAX < coord_frequency) {
+				order.fwd_index.points[i].push_back(std::make_pair(j, (float)1));
+			}
+		}
+	}
+	order.inv_index = inverted_index<float, uint32_t>(order.fwd_index);
+	std::cout << "Generated " << num_points << " points of dim " << num_dims << " at nonzero frequency " << coord_frequency << std::endl;
+#else
 	srand(0);
 	size_t sample_size = -1ull;
 	if (argc < 2) {
@@ -131,12 +168,13 @@ int main(int argc, char **argv) {
 		sample_size = std::stoi(argv[2]);
 	}
 
-
 	if (sample_size == -1ull) std::cout << "Reading all lines from " << argv[1] << std::endl;
 	else std::cout << "Reading " << sample_size << " lines from " << argv[1] << std::endl;
 	coord_order order(argv[1], "csr", sample_size);
 	if (!order.inv_index.num_lists) exit(0);
+#endif
 	
+#if MANUAL_TEST
 	std::cout << "===Initial State===" << std::endl;
 	print_state(order);
 	std::cout << "Partition cost:\t" << get_partition_cost(order, 0, order.order.size()) << std::endl;
@@ -147,7 +185,7 @@ int main(int argc, char **argv) {
 
 	std::cout << "Treating sets of size 100\%" << std::endl;
 	std::cout << "Applying min hash" << std::endl;
-	order.shingle_order(0, order.order.size());
+	order.SHINGLE_ORDER(0, order.order.size());
 	std::cout << "===State after min hash===" << std::endl;
 	print_state(order);
 	std::cout << "Partition cost:\t" << get_partition_cost(order, 0, order.order.size()) << std::endl;
@@ -155,7 +193,7 @@ int main(int argc, char **argv) {
 	std::cout << std::endl;
 	print_move_gains(order, 0, order.order.size());
 	std::cout << "Applying 1 swap round" << std::endl;
-	order.iterated_swap_seq(0, order.order.size());
+	order.ITERATED_SWAP(0, order.order.size());
 	std::cout << "===State after 1 swap round===" << std::endl;
 	print_state(order);
 	std::cout << "Partition cost:\t" << get_partition_cost(order, 0, order.order.size()) << std::endl;
@@ -163,7 +201,7 @@ int main(int argc, char **argv) {
 	std::cout << std::endl;
 	print_move_gains(order, 0, order.order.size());
 	std::cout << "Applying 1 swap round" << std::endl;
-	order.iterated_swap_seq(0, order.order.size());
+	order.ITERATED_SWAP(0, order.order.size());
 	std::cout << "===State after 2 swap rounds===" << std::endl;
 	print_state(order);
 	std::cout << "Partition cost:\t" << get_partition_cost(order, 0, order.order.size()) << std::endl;
@@ -172,7 +210,7 @@ int main(int argc, char **argv) {
 	print_move_gains(order, 0, order.order.size());
 	std::cout << "Applying 18 swap rounds" << std::endl;
 	for (int i = 0; i < 18; i++) {
-		if (!order.iterated_swap_seq(0, order.order.size())) break;
+		if (!order.ITERATED_SWAP(0, order.order.size())) break;
 	}
 	std::cout << "===State after 20 swap rounds===" << std::endl;
 	print_state(order);
@@ -185,8 +223,8 @@ int main(int argc, char **argv) {
 	uint32_t mid = order.order.size() / 2;
 	std::cout << "Treating sets of size 50\%" << std::endl;
 	std::cout << "Applying min hash" << std::endl;
-	order.shingle_order(0, mid);
-	order.shingle_order(mid, order.order.size());
+	order.SHINGLE_ORDER(0, mid);
+	order.SHINGLE_ORDER(mid, order.order.size());
 	print_state(order);
 	std::cout << "Partition cost:\t" << get_partition_cost(order, 0, mid) + get_partition_cost(order, mid, order.order.size()) << std::endl;
 
@@ -194,8 +232,8 @@ int main(int argc, char **argv) {
 	print_move_gains(order, 0, mid);
 	print_move_gains(order, mid, order.order.size());
 	std::cout << "Applying 1 swap round" << std::endl;
-	order.iterated_swap_seq(0, mid);
-	order.iterated_swap_seq(mid, order.order.size());
+	order.ITERATED_SWAP(0, mid);
+	order.ITERATED_SWAP(mid, order.order.size());
 	std::cout << "===State after 1 swap round===" << std::endl;
 	print_state(order);
 	std::cout << "Partition cost:\t" << get_partition_cost(order, 0, mid) + get_partition_cost(order, mid, order.order.size()) << std::endl;
@@ -204,8 +242,8 @@ int main(int argc, char **argv) {
 	print_move_gains(order, 0, mid);
 	print_move_gains(order, mid, order.order.size());
 	std::cout << "Applying 1 swap round" << std::endl;
-	order.iterated_swap_seq(0, mid);
-	order.iterated_swap_seq(mid, order.order.size());
+	order.ITERATED_SWAP(0, mid);
+	order.ITERATED_SWAP(mid, order.order.size());
 	std::cout << "===State after 2 swap rounds===" << std::endl;
 	print_state(order);
 	std::cout << "Partition cost:\t" << get_partition_cost(order, 0, mid) + get_partition_cost(order, mid, order.order.size()) << std::endl;
@@ -215,14 +253,33 @@ int main(int argc, char **argv) {
 	print_move_gains(order, mid, order.order.size());
 	std::cout << "Applying 18 swap rounds" << std::endl;
 	for (int i = 0; i < 18; i++) {
-		if (!order.iterated_swap_seq(0, mid)) break;
+		if (!order.ITERATED_SWAP(0, mid)) break;
 	}
 	for (int i = 0; i < 18; i++) {
-		if (!order.iterated_swap_seq(mid, order.order.size())) break;
+		if (!order.ITERATED_SWAP(mid, order.order.size())) break;
 	}
 	std::cout << "===State after 20 swap rounds===" << std::endl;
 	print_state(order);
 	std::cout << "Partition cost:\t" << get_partition_cost(order, 0, mid) + get_partition_cost(order, mid, order.order.size()) << std::endl;
+
+#else
+	#if !(RANDOM_INPUT)
+	if (order.fwd_index.dims <= 40 && order.fwd_index.points.size() <= 40) {
+		std::cout << "===Initial State===" << std::endl;
+		print_state(order);
+		std::cout << "Partition cost:\t" << get_partition_cost(order, 0, order.order.size()) << std::endl;
+
+		order.reorder(20);
+
+		std::cout << "===Final State===" << std::endl;
+		print_state(order);
+	}
+	else order.reorder(20, true);
+	#else
+	order.reorder(20, true);
+	#endif
+
+#endif
 
 	return 0;
 }

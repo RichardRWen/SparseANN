@@ -32,7 +32,6 @@ struct coord_order {
 	coord_order(const uint32_t dims) : order(dims, 0), order_map(dims, 0), inv_index(dims), fwd_index(dims) {
 		std::iota(order.begin(), order.end(), (uint32_t)0);
 		std::iota(order_map.begin(), order_map.end(), (uint32_t)0);
-		assert(inv_index.posting_lists.size() == order.size() && fwd_index.dims == order.size());
 	}
 	coord_order(const char *filename, const char *filetype, const size_t _num_to_read = -1ULL) : inv_index(filename, filetype, _num_to_read), fwd_index(filename, filetype, _num_to_read) {
 		if (strcmp(filetype, "csr") == 0) {
@@ -95,14 +94,18 @@ struct coord_order {
 	void shingle_order(const uint32_t start, const uint32_t end) {
 		hasher_murmur64a hasher;
 
-		std::vector<uint32_t> shingles(end - start, -1);
-		for (int i = 0; i < shingles.size(); i++) {
-			// sort by shingles
-			for (uint32_t j = 0; j < inv_index.posting_lists[order[start + i]].size(); j++) {
-				uint32_t hash = (uint32_t)hasher(inv_index.posting_lists[order[start + i]][j].first);
-				if (hash < shingles[i]) shingles[i] = hash;
+		auto shingles = parlay::sequence<uint32_t>::from_function(end - start,
+			[&] (size_t i) -> uint32_t {
+				uint32_t shingle = -1;
+				parlay::parallel_for(0, inv_index.posting_lists[order[start + i]].size(),
+					[&] (size_t j) {
+						uint32_t hash = (uint32_t)hasher(inv_index.posting_lists[order[start + i]][j].first);
+						if (hash < shingle) shingle = hash;
+					}
+				);
+				return shingle;
 			}
-		}
+		);
 
 		auto indices = parlay::sort(
 			parlay::tabulate(end - start, [] (size_t i) {return i;}), 
@@ -234,6 +237,10 @@ struct coord_order {
 		return gain1 + gain2;
 	}
 
+	/* Helper function for _move_gain()
+	 * Given a vector and two sets of dimensions, counts how many
+	 * of the nonzero dimensions of the vector are in each set.
+	 */
 	std::pair<uint32_t, uint32_t> _get_degrees(parlay::sequence<std::pair<uint32_t, float>> &vec, std::unordered_set<uint32_t> &set1, std::unordered_set<uint32_t> &set2) {
 		auto partial_degrees = parlay::delayed_tabulate(vec.size(),
 			[&vec, &set1, &set2] (size_t i) -> std::pair<uint32_t, uint32_t> {
@@ -247,6 +254,10 @@ struct coord_order {
 			}, std::make_pair<uint32_t, uint32_t>(0, 0)));
 		return degrees;
 	}
+	/* Helper function for iterated_swap()
+	 * Calculates the gain from moving a particular dimension from
+	 * one set to the other.
+	 */
 	double _move_gain(const uint32_t index, std::unordered_set<uint32_t> &set1, std::unordered_set<uint32_t> &set2) {
 		auto partial_move_gains = parlay::delayed_tabulate(inv_index.posting_lists[index].size(),
 			[this, index, &set1, &set2] (size_t i) -> double {
@@ -265,51 +276,79 @@ struct coord_order {
 			}, (double)0));
 		return move_gain;
 	}
+	/* Wrapper function for _move_gain()
+	 */
 	double move_gain(const uint32_t index, std::unordered_set<uint32_t> &set1, std::unordered_set<uint32_t> &set2) {
 		return _move_gain(inv_index.posting_lists[index], 0, inv_index.posting_lists[index].size(), set1, set2);
 	}
-	void iterated_swap(const uint32_t start, const uint32_t end) {
-		if (end - start < 2) return;
+	/* Given a range of dimensions in the coordinate order,
+	 * partition them into two sets, then greedily swap dimensions
+	 * across the two partitions in order to maximize correlation
+	 * between the dimensions in each partition.
+	 */
+	bool iterated_swap(const uint32_t start, const uint32_t end) {
+		if (end - start < 2) return false;
 		uint32_t set_size = (end - start) / 2;
 		uint32_t mid = (end + start) / 2;
 
-		// split coords in half to form two sets
+		// TODO: profile if parlay hashtable improves performance
+		// split dims in half to form two sets
 		std::unordered_set<uint32_t> set1;
 		std::unordered_set<uint32_t> set2;
 		for (int i = start; i < mid; i++) set1.insert(order[i]);
 		for (int i = mid;   i < end; i++) set2.insert(order[i]);
 
-		// calculate move gains for every coord
-		std::vector<double> gains(end - start, 0);
-		parlay::parallel_for(start, end, [&](size_t i) {
-			if (i < mid) gains[i] = move_gain(i, set1, set2);
-			else gains[i] = move_gain(i, set2, set1);
-		});
+		// calculate move gains for every dim
+		auto move_gains = parlay::sequence<double>::from_function(end - start,
+			[&] (size_t i) -> double {
+				if (i < set_size) return move_gain(order[start + i], set1, set2);
+				else return move_gain(order[start + i], set2, set1);
+			}
+		);
 
-		// sort the two sets according to move gain
-		std::vector<uint32_t> indices(end - start);
-		std::iota(indices.begin(), indices.end(), (uint32_t)0);
-		std::sort(indices.begin(), indices.begin() + set_size, [&gains] (uint32_t a, uint32_t b) -> bool {
-				return gains[a] > gains[b];
-				});
-		std::sort(indices.begin() + set_size, indices.end(),   [&gains] (uint32_t a, uint32_t b) -> bool {
-				return gains[a] > gains[b];
-				});
-
-		// perform swaps between the sets so long as they are profitable
+		// sort the dims according to move gain
+		auto indices = parlay::sequence<uint32_t>::from_function(end - start, 
+			[] (size_t i) -> uint32_t {
+				return (uint32_t)i;
+			}
+		);
+		parlay::par_do(
+			[&indices, &move_gains, set_size] () {
+				parlay::stable_sort_inplace(parlay::make_slice(indices.begin(), indices.begin() + set_size),
+					[&move_gains] (uint32_t a, uint32_t b) -> bool {
+						return move_gains[a] < move_gains[b];
+					}
+				);
+			},
+			[&indices, &move_gains, set_size] () {
+				parlay::stable_sort_inplace(parlay::make_slice(indices.begin() + set_size, indices.end()),
+					[&move_gains] (uint32_t a, uint32_t b) -> bool {
+						return move_gains[a] < move_gains[b];
+					}
+				);
+			}
+		);
+		
+		// swap dims between the sets as long as it's profitable
 		for (int i = 0; i < set_size; i++) {
-			if (gains[indices[i]] + gains[indices[set_size + i]] > 0) {
+			if (move_gains[indices[i]] + move_gains[indices[set_size + i]] < 0) {
 				uint32_t temp = indices[i];
 				indices[i] = indices[set_size + i];
 				indices[set_size + i] = temp;
 			}
+			else if (i == 0) return false;
 			else break;
 		}
 
 		// rearrange by newly calculated order
-		std::vector<uint32_t> clone(end - start);
-		for (int i = start; i < end; i++) clone[i - start] = order[i];
-		for (int i = 0; i < indices.size(); i++) order[start + i] = clone[indices[i]];
+		// TODO: see if order_map can be set first to remove need for clone
+		auto clone = parlay::sequence<uint32_t>::from_function(end - start, [&] (size_t i) {return order[start + i];});
+		for (int i = 0; i < indices.size(); i++) {
+			order[start + i] = clone[indices[i]];
+			order_map[order[start + i]] = start + i;
+		}
+
+		return true;
 	}
 
 	void reorder_seq(const uint32_t max_iters = 20, const bool verbose = false) {
@@ -332,25 +371,30 @@ struct coord_order {
 		}
 	}
 
-	void reorder(const uint32_t max_iters = 20, const bool verbose = false) {
-		if (verbose) std::cout << "Initial log gap cost:\t" << log_gap_cost() << std::endl;
-		std::queue<std::pair<uint32_t, uint32_t>> queue;
-		queue.push(std::make_pair(0, order.size()));
-		
-		while (!queue.empty()) {
-			shingle_order(queue.front().first, queue.front().second);
-			for (int i = 0; i < max_iters; i++) {
-				iterated_swap(queue.front().first, queue.front().second);
-			}
+	void _reorder(const uint32_t start, const uint32_t end, const uint32_t max_iters) {
+		if (end - start <= 2) return;
 
-			uint32_t mid = (queue.front().first + queue.front().second) / 2;
-			if (mid - queue.front().first > 1) queue.push(std::make_pair(queue.front().first, mid));
-			if (queue.front().second - mid > 1) queue.push(std::make_pair(mid, queue.front().second));
-
-			//if (verbose && queue.front().second == order.size()) std::cout << "Gap cost after level size " << (queue.front().second - queue.front().first) << ":\t" << _log_gap_cost(0, order.size()) << std::endl;
-			queue.pop();
+		shingle_order(start, end);
+		for (int i = 0; i < max_iters; i++) {
+			if (!iterated_swap(start, end)) break;
 		}
 
+		uint32_t mid = (start + end) / 2;
+		parlay::par_do(
+			[&] () {
+				_reorder(start, mid, max_iters);
+			},
+			[&] () {
+				_reorder(mid, end, max_iters);
+			}
+		);
+	}
+	// TODO: make sure iter_swaps terminates early if no swaps done
+	void reorder(const uint32_t max_iters = 20, const bool verbose = false) {
+		if (verbose) std::cout << "Initial log gap cost:\t" << log_gap_cost() << std::endl;
+
+		_reorder(0, order.size(), max_iters);
+		
 		if (verbose) std::cout << "Final log gap cost:\t" << log_gap_cost() << std::endl;
 	}
 
@@ -501,7 +545,6 @@ struct coord_order {
 			return 0;
 		}
 
-		auto iota = parlay::sequence<uint32_t>(coords.size()); // TODO: check to see if this iota is needed
 		auto indices = parlay::sequence<uint32_t>::from_function(coords.size(),
 			[] (size_t i) {
 				return i;
@@ -513,10 +556,10 @@ struct coord_order {
 				return order_map[coords[a].first] < order_map[coords[b].first];
 			});
 
-		double log_gap_cost = par_reduce(parlay::make_slice(iota.begin() + 1, iota.end()),
+		double log_gap_cost = par_reduce(parlay::iota<uint32_t>(coords.size() - 1),
 			parlay::binary_op([this, &coords, &indices] (double acc, uint32_t x) -> double {
-				assert(order_map[coords[indices[x - 1]].first] < order_map[coords[indices[x]].first]);
-				return acc + log(order_map[coords[indices[x]].first] - order_map[coords[indices[x - 1]].first]);
+				assert(order_map[coords[indices[x]].first] < order_map[coords[indices[x + 1]].first]);
+				return acc + log(order_map[coords[indices[x + 1]].first] - order_map[coords[indices[x]].first]);
 			}, (double)0));
 
 		return log_gap_cost / (coords.size() - 1);
