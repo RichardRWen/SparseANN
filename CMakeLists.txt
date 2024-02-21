@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.10)
 project(SparseANN)
 
 set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_PREFIX_PATH "parlaylib/lib")
+set(CMAKE_PREFIX_PATH "parlaylib")
 
 find_package(Parlay REQUIRED)
 set(OPENSSL_USE_STATIC_LIBS TRUE)
