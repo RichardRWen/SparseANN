@@ -58,7 +58,7 @@ double get_recall_compressed(gt_type& gt, char *inserts_file, char *queries_file
 
 int main(int argc, char **argv) {
 	if (argc < 3) {
-		std::cout << "Not enough arguments" << std::endl;
+		std::cout << "Usage: " << argv[0] << " [inserts csr file] [queries csr file]" << std::endl;
 	}
 	
 	int k = 10;
