@@ -4,7 +4,7 @@
 #include <parlay/sequence.h>
 
 #include "forward_index.h"
-#include "linscan.h"
+#include "inverted_index.h"
 
 
 template <typename val_type = float, typename id_type = uint32_t>

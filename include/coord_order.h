@@ -14,7 +14,7 @@
 #include <parlay/sequence.h>
 
 #include "hashutil.h"
-#include "linscan.h"
+#include "inverted_index.h"
 #include "forward_index.h"
 #include "parlay_util.h"
 

@@ -2,7 +2,7 @@
 #include <iostream>
 #include <cassert>
 
-#include "../include/linscan.h"
+#include "../include/inverted_index.h"
 
 int main(int argc, char **argv) {
 	inverted_index<float> inv_index(5);
