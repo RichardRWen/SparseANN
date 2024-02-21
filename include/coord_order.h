@@ -352,7 +352,9 @@ struct coord_order {
 	}
 
 	void reorder_seq(const uint32_t max_iters = 20, const bool verbose = false) {
-		//if (verbose) std::cout << "Initial log gap cost:\t" << _log_gap_cost(0, order.size()) << std::endl;
+		if (verbose) std::cout << "Initial log gap cost:\t" << log_gap_cost_seq() << std::endl;
+		auto start = std::chrono::high_resolution_clock::now();
+
 		std::queue<std::pair<uint32_t, uint32_t>> queue;
 		queue.push(std::make_pair(0, order.size()));
 		
@@ -368,6 +370,13 @@ struct coord_order {
 
 			if (verbose && queue.front().second == order.size()) std::cout << "Gap cost after level size " << (queue.front().second - queue.front().first) << ":\t" << log_gap_cost_seq() << std::endl;
 			queue.pop();
+		}
+
+		if (verbose) {
+			auto stop = std::chrono::high_resolution_clock::now();
+			auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
+			std::cout << "Final log gap cost:\t" << log_gap_cost_seq() << std::endl;
+			std::cout << "Execution time: " << duration.count() / 1000.0 << " sec" << std::endl;
 		}
 	}
 
@@ -391,11 +400,18 @@ struct coord_order {
 	}
 	// TODO: make sure iter_swaps terminates early if no swaps done
 	void reorder(const uint32_t max_iters = 20, const bool verbose = false) {
-		if (verbose) std::cout << "Initial log gap cost:\t" << log_gap_cost() << std::endl;
+		if (verbose) {
+			std::cout << "Initial log gap cost:\t" << log_gap_cost() << std::endl;
+			auto start = std::chrono::high_resolution_clock::now();
 
-		_reorder(0, order.size(), max_iters);
+			_reorder(0, order.size(), max_iters);
 		
-		if (verbose) std::cout << "Final log gap cost:\t" << log_gap_cost() << std::endl;
+			auto stop = std::chrono::high_resolution_clock::now();
+			auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
+			std::cout << "Final log gap cost:\t" << log_gap_cost() << std::endl;
+			std::cout << "Execution time: " << duration.count() / 1000.0 << " sec" << std::endl;
+		}
+		else _reorder(0, order.size(), max_iters);
 	}
 
 	void write_to_file(const char *filename) {
@@ -556,7 +572,7 @@ struct coord_order {
 				return order_map[coords[a].first] < order_map[coords[b].first];
 			});
 
-		double log_gap_cost = par_reduce(parlay::iota<uint32_t>(coords.size() - 1),
+		double log_gap_cost = parlay::reduce(parlay::iota<uint32_t>(coords.size() - 1),
 			parlay::binary_op([this, &coords, &indices] (double acc, uint32_t x) -> double {
 				assert(order_map[coords[indices[x]].first] < order_map[coords[indices[x + 1]].first]);
 				return acc + log(order_map[coords[indices[x + 1]].first] - order_map[coords[indices[x]].first]);

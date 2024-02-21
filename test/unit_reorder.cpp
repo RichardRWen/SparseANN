@@ -19,9 +19,11 @@
 #if SEQUENTIAL
 	#define SHINGLE_ORDER shingle_order_seq
 	#define ITERATED_SWAP iterated_swap_seq
+	#define REORDER reorder_seq
 #else
 	#define SHINGLE_ORDER shingle_order
 	#define ITERATED_SWAP iterated_swap
+	#define REORDER reorder
 #endif
 
 void print_level(int level) {
@@ -269,14 +271,14 @@ int main(int argc, char **argv) {
 		print_state(order);
 		std::cout << "Partition cost:\t" << get_partition_cost(order, 0, order.order.size()) << std::endl;
 
-		order.reorder(20);
+		order.REORDER(20);
 
 		std::cout << "===Final State===" << std::endl;
 		print_state(order);
 	}
-	else order.reorder(20, true);
+	else order.REORDER(20, true);
 	#else
-	order.reorder(20, true);
+	order.REORDER(20, true);
 	#endif
 
 #endif

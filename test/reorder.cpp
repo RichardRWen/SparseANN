@@ -16,7 +16,7 @@ int main(int argc, char **argv) {
 	}
 
 	coord_order order(argv[1], "csr", std::stoull(argv[2]));
-	order.reorder_seq(20, true);
+	order.reorder(20, true);
 	
 	order.write_to_file(argv[3]);
 
