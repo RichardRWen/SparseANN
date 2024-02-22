@@ -24,20 +24,20 @@
 */
 
 struct coord_order {
-	std::vector<uint32_t> order; // what coordinate is in each position
-	std::vector<uint32_t> order_map; // what position each coordinate is in
+	parlay::sequence<uint32_t> order; // what coordinate is in each position
+	parlay::sequence<uint32_t> order_map; // what position each coordinate is in
 	inverted_index<float, uint32_t> inv_index;
 	forward_index<float> fwd_index;
 
-	coord_order(const uint32_t dims) : order(dims, 0), order_map(dims, 0), inv_index(dims), fwd_index(dims) {
+	coord_order(const uint32_t dims) : order(dims, 0), order_map(dims, 0) {
 		std::iota(order.begin(), order.end(), (uint32_t)0);
 		std::iota(order_map.begin(), order_map.end(), (uint32_t)0);
 	}
 	coord_order(const char *filename, const char *filetype, const size_t _num_to_read = -1ULL) : inv_index(filename, filetype, _num_to_read), fwd_index(filename, filetype, _num_to_read) {
 		if (strcmp(filetype, "csr") == 0) {
-			order.resize(inv_index.num_lists);
+			order = parlay::sequence<uint32_t>::uninitialized(inv_index.num_lists);
 			std::iota(order.begin(), order.end(), (uint32_t)0);
-			order_map.resize(inv_index.num_lists);
+			order_map = parlay::sequence<uint32_t>::uninitialized(inv_index.num_lists);
 			std::iota(order_map.begin(), order_map.end(), (uint32_t)0);
 			assert(inv_index.posting_lists.size() == order.size() && fwd_index.dims == order.size());
 		}
@@ -60,6 +60,10 @@ struct coord_order {
 			
 			reader.close();
 		}
+	}
+	coord_order(forward_index<float>& _fwd_index) : coord_order(_fwd_index.dims) {
+		fwd_index = forward_index<float>::clone(_fwd_index);
+		inv_index = inverted_index<float, uint32_t>(fwd_index);
 	}
 
 	void shingle_order_seq(const uint32_t start, const uint32_t end) {
@@ -507,10 +511,11 @@ struct coord_order {
 					return order_map[index_buffer[a]] < order_map[index_buffer[b]];
 				});
 
+			std::vector<float> reordered_values(num_dims);
 			for (uint64_t j = 0; j < indptr - indptr_prev; j++) {
-				index_buffer[j] = value_buffer[sort_buffer[j]];
+				reordered_values[j] = value_buffer[sort_buffer[j]];
 			}
-			writer.write((char*)(&index_buffer[0]), (indptr - indptr_prev) * sizeof(uint32_t));
+			writer.write((char*)(&reordered_values[0]), (indptr - indptr_prev) * sizeof(uint32_t));
 		}
 
 		indptr_reader.close();

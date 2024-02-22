@@ -1,3 +1,6 @@
+#ifndef _SPARSE_HASHUTIL_H_
+#define _SPARSE_HASHUTIL_H_
+
 #include <cstdlib>
 #include <cstdint>
 
@@ -25,3 +28,5 @@ struct hasher_murmur64a {
 
 struct hash_table_node;
 struct hash_table;
+
+#endif

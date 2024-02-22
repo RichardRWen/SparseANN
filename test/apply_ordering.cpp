@@ -19,5 +19,8 @@ int main(int argc, char **argv) {
 	
 	order.apply_ordering(argv[2], argv[3]);
 
+	//forward_index fwd_index<float>(argv[2], "csr");
+	//fwd_index.reorder(order.order_map);
+
 	return 0;
 }
