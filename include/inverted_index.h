@@ -20,6 +20,7 @@ public:
 	uint32_t num_lists;
 	parlay::sequence<parlay::sequence<std::pair<id_type, val_type>>> posting_lists;
 
+	inverted_index() {}
 	inverted_index(const unsigned int num_lists) : num_lists(num_lists), posting_lists(num_lists) {}
 	inverted_index(const char *filename, const char *filetype, const size_t _num_to_read = -1ULL) {
 		if (strcmp(filetype, "csr") == 0) {

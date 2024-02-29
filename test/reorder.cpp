@@ -15,7 +15,15 @@ int main(int argc, char **argv) {
 		exit(0);
 	}
 
-	coord_order order(argv[1], "csr", std::stoull(argv[2]));
+	std::cout << "Reading sample from " << argv[1] << "... " << std::flush;
+	forward_index<float> point_range(argv[1], "csr");
+	auto sample = forward_index<float>::sample(point_range, std::stoull(argv[2]));
+	std::cout << "Done" << std::endl;
+
+	std::cout << "Computing reordering" << std::endl;
+	coord_order order(sample);
+
+	//coord_order order(argv[1], "csr", std::stoull(argv[2]));
 	order.reorder(20, true);
 	
 	order.write_to_file(argv[3]);

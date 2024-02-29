@@ -11,6 +11,7 @@ set(TEST_FILES
 	profile_sketch.cpp
 	comp_groundtruth.cpp
 	measure_recall.cpp
+	measure_overretrieval.cpp
 	high_freq_record.cpp
 	high_freq_convert.cpp
 	trec_sample.cpp

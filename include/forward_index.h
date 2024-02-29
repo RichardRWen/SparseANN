@@ -24,6 +24,7 @@ public:
 	uint32_t dims;
 	parlay::sequence<point_t> points;
 
+	forward_index() {}
 	forward_index(uint64_t _dims) : dims(_dims) {}
 	forward_index(const char *filename, const char *filetype, const size_t _num_to_read = -1ULL) {
 		if (strcmp(filetype, "csr") == 0) {
@@ -70,14 +71,40 @@ public:
 	
 	static forward_index<val_type> copy(forward_index<val_type>& fwd_index) {
 		forward_index<val_type> clone(fwd_index.dims);
-		clone.points = parlay::sequence<point_t>::from_function(fwd_index.dims,
+		clone.points = parlay::sequence<point_t>::from_function(fwd_index.points.size(),
 			[&] (size_t i) -> point_t {
-				auto cloned_vector = point_t::uninitialized(fwd_index.dims);
-				parlay::copy(fwd_index.points[i], cloned_vector);
-				return cloned_vector;
+				return point_t::from_function(fwd_index.points[i].size(),
+					[&] (size_t j) { return std::make_pair(fwd_index.points[i][j].first, fwd_index.points[i][j].second); });
 			}
 		);
+
 		return clone;
+	}
+	static forward_index<val_type> head(forward_index<val_type>& fwd_index, size_t head_size) {
+		forward_index<val_type> head_index(fwd_index.dims);
+		head_index.points = parlay::sequence<point_t>::from_function(head_size,
+			[&] (uint32_t i) -> point_t {
+				return fwd_index.points[i];
+			}
+		);
+		return head_index;
+	}
+	static forward_index<val_type> sample(forward_index<val_type>& fwd_index, size_t sample_size) {
+		if (sample_size >= fwd_index.points.size()) return forward_index<val_type>::copy(fwd_index);
+		
+		auto iota = parlay::delayed_tabulate(fwd_index.points.size(), [] (uint32_t i) { return i; });
+		auto priority = parlay::sequence<uint32_t>::uninitialized(fwd_index.points.size());
+		RAND_bytes((unsigned char*)(&priority[0]), priority.size() * sizeof(uint32_t));
+		auto perm = parlay::integer_sort(iota, [&] (uint32_t i) { return priority[i]; });
+
+		forward_index<val_type> sample_index(fwd_index.dims);
+		sample_index.points = parlay::sequence<point_t>::from_function(sample_size,
+			[&] (uint32_t i) -> point_t {
+				return fwd_index.points[perm[i]];
+			}
+		);
+
+		return sample_index;
 	}
 	static forward_index<val_type> group_and_max(forward_index<val_type>& fwd_index, size_t comp_dims) {
 		forward_index<val_type> grouped(comp_dims);
@@ -88,7 +115,7 @@ public:
 				size_t end = fwd_index.size() * (i + 1) / comp_dims;
 				parlay::parallel_for(start, end,
 					[&] (size_t j) {
-						for (auto pair : fwd_index[j]) {
+						for (auto pair : fwd_index.points[j]) {
 							val_type exp_max;
 							do {
 								exp_max = maxes[pair.first];
@@ -99,9 +126,9 @@ public:
 				);
 
 				point_t max_of_group;
-				for (int j = 0; j < maxes.size(); j++) {
+				for (uint32_t j = 0; j < maxes.size(); j++) {
 					if (maxes[j] == 0) continue;
-					max_of_group.push_back(std::make_pair(j, maxes[j]));
+					max_of_group.push_back(std::make_pair<uint32_t, val_type>(j + 0, maxes[j].load(std::memory_order_relaxed)));
 				}
 				return max_of_group;
 			}
@@ -114,9 +141,12 @@ public:
 		assert(map.size() >= dims);
 		parlay::parallel_for(0, points.size(),
 			[&] (size_t i) {
-				parlay::sort_inplace(points[i],
+				for (int j = 0; j < points[i].size(); j++) {
+					points[i][j].first = map[points[i][j].first];
+				}
+				std::sort(points[i].begin(), points[i].end(),
 					[&] (coord_t a, coord_t b) -> bool {
-						return map[a.first] < map[b.first];
+						return a.first < b.first;
 					}
 				);
 			}
@@ -134,6 +164,10 @@ public:
 			}
 		);
 		reorder_dims(perm);
+	}
+
+	inline size_t size() {
+		return points.size();
 	}
 
 	static val_type dist(parlay::sequence<std::pair<uint32_t, val_type>>& p1, parlay::sequence<std::pair<uint32_t, val_type>>& p2) {

@@ -29,7 +29,7 @@ struct coord_order {
 	inverted_index<float, uint32_t> inv_index;
 	forward_index<float> fwd_index;
 
-	coord_order(const uint32_t dims) : order(dims, 0), order_map(dims, 0) {
+	coord_order(const uint32_t dims) : order(dims, 0), order_map(dims, 0), fwd_index(dims), inv_index(dims) {
 		std::iota(order.begin(), order.end(), (uint32_t)0);
 		std::iota(order_map.begin(), order_map.end(), (uint32_t)0);
 	}
@@ -62,7 +62,7 @@ struct coord_order {
 		}
 	}
 	coord_order(forward_index<float>& _fwd_index) : coord_order(_fwd_index.dims) {
-		fwd_index = forward_index<float>::clone(_fwd_index);
+		fwd_index = forward_index<float>::copy(_fwd_index);
 		inv_index = inverted_index<float, uint32_t>(fwd_index);
 	}
 

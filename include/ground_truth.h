@@ -1,6 +1,8 @@
 #ifndef _SPARSE_GROUND_TRUTH_H_
 #define _SPARSE_GROUND_TRUTH_H_
 
+#include <numeric>
+
 #include <parlay/sequence.h>
 
 #include "forward_index.h"
@@ -54,9 +56,10 @@ parlay::sequence<parlay::sequence<id_type>> ground_truth(forward_index<val_type>
 template <typename id_type>
 double get_recall(parlay::sequence<parlay::sequence<id_type>>& ground_truth, parlay::sequence<parlay::sequence<id_type>>& neighbors, int k = 10) {
 	double recall = 0;
+	int num_queries = std::min(ground_truth.size(), neighbors.size());
 	int i;
-	for (i = 0; i < ground_truth.size() && i < neighbors.size(); i++) {
-		for (int j = 0; j < k; j++) {
+	for (i = 0; i < num_queries; i++) {
+		for (int j = 0; j < ground_truth.size(); j++) {
 			for (int l = 0; l < k; l++) {
 				if (neighbors[i][l] == ground_truth[i][j]) {
 					recall++;
