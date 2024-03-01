@@ -108,29 +108,23 @@ public:
 	}
 	static forward_index<val_type> group_and_max(forward_index<val_type>& fwd_index, size_t comp_dims) {
 		forward_index<val_type> grouped(comp_dims);
-		grouped.points = parlay::sequence<point_t>::from_function(comp_dims,
+		grouped.points = parlay::sequence<point_t>::from_function(fwd_index.points.size(),
 			[&] (size_t i) -> point_t {
-				parlay::sequence<std::atomic<val_type>> maxes(fwd_index.dims, 0);
-				size_t start = fwd_index.size() * i / comp_dims;
-				size_t end = fwd_index.size() * (i + 1) / comp_dims;
-				parlay::parallel_for(start, end,
-					[&] (size_t j) {
-						for (auto pair : fwd_index.points[j]) {
-							val_type exp_max;
-							do {
-								exp_max = maxes[pair.first];
-								if (exp_max >= pair.second) break;
-							} while (maxes[pair.first].compare_exchange_weak(exp_max, pair.second));
+				point_t comp_vector;
+				int curr_comp_dim = -1, prev_comp_dim;
+				for (const auto& coord : fwd_index.points[i]) {
+					prev_comp_dim = curr_comp_dim;
+					curr_comp_dim = coord.first * comp_dims / fwd_index.dims;
+					if (curr_comp_dim == prev_comp_dim) {
+						if (coord.second > comp_vector[comp_vector.size() - 1].second) {
+							comp_vector[comp_vector.size() - 1].second = coord.second;
 						}
 					}
-				);
-
-				point_t max_of_group;
-				for (uint32_t j = 0; j < maxes.size(); j++) {
-					if (maxes[j] == 0) continue;
-					max_of_group.push_back(std::make_pair<uint32_t, val_type>(j + 0, maxes[j].load(std::memory_order_relaxed)));
+					else {
+						comp_vector.emplace_back(curr_comp_dim, coord.second);
+					}
 				}
-				return max_of_group;
+				return comp_vector;
 			}
 		);
 		return grouped;
@@ -200,7 +194,7 @@ public:
 		writer.write((char*)(&num_dims), sizeof(uint64_t));
 		writer.write((char*)(&num_vals), sizeof(uint64_t));
 
-		
+		// TODO: finish this
 	}
 };
 

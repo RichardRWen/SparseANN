@@ -54,13 +54,13 @@ parlay::sequence<parlay::sequence<id_type>> ground_truth(forward_index<val_type>
 
 
 template <typename id_type>
-double get_recall(parlay::sequence<parlay::sequence<id_type>>& ground_truth, parlay::sequence<parlay::sequence<id_type>>& neighbors, int k = 10) {
+double get_recall(parlay::sequence<parlay::sequence<id_type>>& ground_truth, parlay::sequence<parlay::sequence<id_type>>& neighbors, int k1 = 10, int k2 = 10) {
 	double recall = 0;
 	int num_queries = std::min(ground_truth.size(), neighbors.size());
 	int i;
 	for (i = 0; i < num_queries; i++) {
-		for (int j = 0; j < ground_truth.size(); j++) {
-			for (int l = 0; l < k; l++) {
+		for (int j = 0; j < k1; j++) {
+			for (int l = 0; l < k2; l++) {
 				if (neighbors[i][l] == ground_truth[i][j]) {
 					recall++;
 					break;
@@ -68,7 +68,7 @@ double get_recall(parlay::sequence<parlay::sequence<id_type>>& ground_truth, par
 			}
 		}
 	}
-	return recall / (i * k);
+	return recall / (i * k1);
 }
 
 #endif

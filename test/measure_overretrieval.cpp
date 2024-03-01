@@ -7,15 +7,15 @@
 
 int main(int argc, char **argv) {
 	int k = 10;
-	int overretrievals[7] = {1, 2, 5, 10, 20, 50, 100};
+	int overretrievals[10] = {1, 2, 5, 10, 20, 50, 100, 200, 500, 1000};
 	for (int i = 0; i < sizeof(overretrievals) / sizeof(overretrievals[0]); i++) {
 		overretrievals[i] *= k;
 	}
 
 	forward_index<float> inserts, queries;
 	time_function("Reading input files", [&] () {
-		forward_index<float>("data/base_small.csr", "csr");
-		forward_index<float>("data/queries.dev.csr", "csr");
+		inserts = forward_index<float>("data/base_small.csr", "csr");
+		queries = forward_index<float>("data/queries.dev.csr", "csr");
 	});
 
 	parlay::sequence<parlay::sequence<uint32_t>> gt;
@@ -36,12 +36,12 @@ int main(int argc, char **argv) {
 
 	parlay::sequence<parlay::sequence<uint32_t>> transformed_gt;
 	time_function("Computing ground truth of transformed inputs", [&] () {
-		transformed_gt = ground_truth(inserts, queries, overretrievals[sizeof(overretrievals) / sizeof(overretrievals[0])]);
+		transformed_gt = ground_truth(inserts, queries, overretrievals[(sizeof(overretrievals) / sizeof(overretrievals[0])) - 1]);
 	});
 
 	for (int overret : overretrievals) {
-		double recall = get_recall(gt, transformed_gt, overret);
-		std::cout << "Recall " << overret << "@" << k << ":\t" << recall << std::endl;
+		double recall = get_recall(gt, transformed_gt, k, overret);
+		std::cout << "Recall " << overret << "@" << k << ":   \t" << recall << std::endl;
 	}
 
 	/*exit(0);
