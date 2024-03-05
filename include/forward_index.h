@@ -149,12 +149,10 @@ public:
 	void shuffle_dims() {
 		auto weights = parlay::sequence<uint32_t>::uninitialized(dims);
 		RAND_bytes((unsigned char*)(&weights[0]), dims * sizeof(weights[0]));
-		auto perm = parlay::sequence<uint32_t>::from_function(dims,
-			[&] (uint32_t i) { return i; }
-		);
-		parlay::sort(perm,
-			[&] (uint32_t a, uint32_t b) -> bool {
-				return weights[a] < weights[b];
+		auto iota = parlay::delayed_tabulate(weights.size(), [] (uint32_t i) { return i; });
+		auto perm = parlay::integer_sort(iota,
+			[&] (uint32_t a) -> uint32_t {
+				return weights[a];
 			}
 		);
 		reorder_dims(perm);

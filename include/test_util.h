@@ -3,7 +3,7 @@
 #include <chrono>
 
 void time_function(std::string caption, std::function<void()> func) {
-	std::cout << caption << "...\t" << std::flush;
+	std::cout << caption << "...  " << std::flush;
 	auto start = std::chrono::high_resolution_clock::now();
 	
 	func();
