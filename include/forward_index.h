@@ -1,8 +1,9 @@
 #ifndef _FORWARD_INDEX_H_
 #define _FORWARD_INDEX_H_
 
-#include <stdlib.h>
+#include <cstdlib>
 #include <cstdint>
+#include <iostream>
 #include <vector>
 #include <unordered_map>
 #include <cstring>
@@ -11,10 +12,20 @@
 #include <cassert>
 
 #include <parlay/sequence.h>
+#include <parlay/delayed_sequence.h>
 #include <parlay/primitives.h>
 #include <openssl/rand.h>
 
 #include "hashutil.h"
+
+/*#ifndef _RANGE_CONCEPT_
+#define _RANGE_CONCEPT_
+template <typename T>
+concept Range = requires(T a) {
+	{ a.begin() } -> std::input_or_output_iterator;
+	{ a.end() } -> std::input_or_output_iterator;
+}
+#endif*/
 
 template <typename val_type = float>
 class forward_index {
@@ -65,7 +76,33 @@ public:
 			index_reader.close();
 			value_reader.close();
 		}
+        else if (strcmp(filetype, "vec") == 0) {
+            std::ifstream reader(filename);
+            if (!reader.is_open()) {
+                return;
+            }
+            
+            uint32_t num_vecs, num_dims;
+            reader.read((char*)(&num_vecs), sizeof(uint32_t));
+            reader.read((char*)(&num_dims), sizeof(uint32_t));
+            dims = num_dims;
+            
+            for (uint32_t i = 0; i < num_vecs; i++) {
+                parlay::sequence<std::pair<uint32_t, val_type>> point;
+                for (uint32_t j = 0; j < num_dims; j++) {
+                    val_type val;
+                    reader.read((char*)(&val), sizeof(val_type));
+                    if (val != 0) {
+                        point.push_back(std::make_pair(j, val));
+                    }
+                }
+                points.push_back(point);
+            }
+
+            reader.close();
+        }
 		else {
+            std::cout << "File type not supported: " << filetype << std::endl;
 		}
 	}
 	
@@ -129,6 +166,43 @@ public:
 		);
 		return grouped;
 	}
+	static forward_index<val_type> group_and_sum(forward_index<val_type>& fwd_index, size_t comp_dims) {
+		forward_index<val_type> grouped(comp_dims);
+		grouped.points = parlay::sequence<point_t>(fwd_index.points.size());
+
+		parlay::parallel_for(0, fwd_index.points.size(), [&] (size_t i) {
+			int range_start = 0, range_end = 0;
+			while (range_start < fwd_index.points[i].size()) {
+				uint32_t range_comp_dim = fwd_index.points[i][range_start].first * comp_dims / fwd_index.dims;
+				val_type range_sum = 0;
+				do { range_sum += fwd_index.points[i][range_end].second; range_end++; } while (fwd_index.points[i][range_end].first * comp_dims / fwd_index.dims == range_comp_dim);
+
+				grouped.points[i].push_back(std::make_pair(range_comp_dim, range_sum));
+
+				range_start = range_end;
+			}
+		});
+
+		return grouped;
+	}
+	static forward_index<val_type> group(forward_index<val_type>& fwd_index, size_t comp_dims, val_type (*combine)(parlay::sequence<std::pair<uint32_t, val_type>>& coords, size_t start, size_t end)) {
+		forward_index<val_type> grouped(comp_dims);
+		grouped.points = parlay::sequence<point_t>(fwd_index.points.size());
+
+		parlay::parallel_for(0, fwd_index.points.size(), [&] (size_t i) {
+			int range_start = 0, range_end = 0;
+			while (range_start < fwd_index.points[i].size()) {
+				uint32_t range_comp_dim = fwd_index.points[i][range_start].first * comp_dims / fwd_index.dims;
+				do { range_end++; } while (fwd_index.points[i][range_end].first * comp_dims / fwd_index.dims == range_comp_dim);
+
+				grouped.points[i].push_back(std::make_pair(range_comp_dim, combine(fwd_index.points[i], range_start, range_end)));
+
+				range_start = range_end;
+			}
+		});
+
+		return grouped;
+	}
 
 	template <typename T>
 	void reorder_dims(parlay::sequence<T>& map) {
@@ -177,22 +251,66 @@ public:
 	}
 
 	bool write_to_file(const char *filename, const char *filetype) {
-		std::ofstream writer(filename);
-		if (!writer.is_open()) return false;
+        if (strcmp(filetype, "csr") == 0) {
+            std::ofstream writer(filename);
+            if (!writer.is_open()) return false;
 
-		uint64_t num_vecs = points.size();
-		uint64_t num_dims = dims;
-		uint64_t num_vals = parlay::reduce(
-			parlay::delayed_tabulate(points.size(),
-				[&] (size_t i) -> size_t { return points[i].size(); }
-			)
-		);
+            uint64_t num_vecs = points.size();
+            uint64_t num_dims = dims;
+            uint64_t num_vals = parlay::reduce(
+                parlay::delayed_tabulate(points.size(),
+                    [&] (size_t i) -> size_t { return points[i].size(); }
+                )
+            );
 
-		writer.write((char*)(&num_vecs), sizeof(uint64_t));
-		writer.write((char*)(&num_dims), sizeof(uint64_t));
-		writer.write((char*)(&num_vals), sizeof(uint64_t));
+            writer.write((char*)(&num_vecs), sizeof(uint64_t));
+            writer.write((char*)(&num_dims), sizeof(uint64_t));
+            writer.write((char*)(&num_vals), sizeof(uint64_t));
 
-		// TODO: finish this
+            uint64_t buffer = 0;
+            writer.write((char*)(&buffer), sizeof(uint64_t));
+            size_t bytes_written = 4 * sizeof(uint64_t);
+            //std::cout << bytes_written << " bytes written" << std::endl;
+            for (auto point : points) {
+                buffer += point.size();
+                writer.write((char*)(&buffer), sizeof(uint64_t));
+            }
+            //std::cout << bytes_written << " bytes written" << std::endl;
+            for (auto point : points) {
+                for (auto coord : point) {
+                    writer.write((char*)(&coord.first), sizeof(uint32_t));
+                }
+            }
+            //std::cout << bytes_written << " bytes written" << std::endl;
+            for (auto point : points) {
+                for (auto coord : point) {
+                    writer.write((char*)(&coord.second), sizeof(val_type));
+                }
+            }
+            //std::cout << bytes_written << " bytes written" << std::endl;
+
+            writer.close();
+            return true;
+        }
+        else if (strcmp(filetype, "vec") == 0) {
+            std::ofstream writer(filename);
+            if (!writer.is_open()) return false;
+
+            uint32_t num_dims = dims, num_vecs = points.size();
+            writer.write((char*)(&num_vecs), sizeof(uint32_t));
+            writer.write((char*)(&num_dims), sizeof(uint32_t));
+            
+            for (uint32_t i = 0; i < num_vecs; i++) {
+                parlay::sequence<val_type> point(dims, (val_type)0);
+                parlay::parallel_for(0, points[i].size(), [&] (size_t j) {
+                    point[points[i][j].first] = points[i][j].second;
+                });
+                writer.write((char*)(&point[0]), dims * sizeof(val_type));
+            }
+
+            writer.close();
+            return true;
+        }
 	}
 };
 

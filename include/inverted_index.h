@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iostream>
 #include <algorithm>
+#include <limits>
 
 #include <parlay/sequence.h>
 
@@ -116,9 +117,10 @@ public:
 						return a.second > b.second;
 					}
 				);
+				heap.pop_back();
 			}
 		}
-
+		
 		return heap;
 	}
 
@@ -152,10 +154,17 @@ public:
 						return a.second > b.second;
 					}
 				);
+				heap.pop_back();
 			}
 		}
 
-		// TODO: pad ou if the heap doesn't have k items
+		parlay::sort_inplace(heap, [] (std::pair<id_type, val_type> a, std::pair<id_type, val_type> b) -> bool {
+			return a.second > b.second;
+		});
+        while (heap.size() < k) {
+            heap.push_back(std::make_pair((id_type)(-1), std::numeric_limits<val_type>::max()));
+        }
+
 		return heap;
 	}
 };

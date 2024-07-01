@@ -4,7 +4,12 @@
 
 #include "../include/inverted_index.h"
 
+//#include <parlay/hash_table.h>
+
 int main(int argc, char **argv) {
+    //parlay::hashtable table(100, parlay::hash_numeric<int>{});
+    //std::cout << table.count() << std::endl;
+
 	inverted_index<float> inv_index(5);
 
 	float insert_vectors[][5] = {

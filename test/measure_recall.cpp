@@ -1,10 +1,12 @@
 #include <iostream>
+#include <algorithm> // lower_bound
 
 #include "forward_index.h"
 #include "ground_truth.h"
 
 using id_type = uint32_t;
 using gt_type = parlay::sequence<parlay::sequence<id_type>>;
+using gtd_type = parlay::sequence<parlay::sequence<std::pair<uint32_t, float>>>;
 
 // solely a sanity check test - we are just testing the gt with itself
 double get_recall_linscan(gt_type& gt, char *inserts_file, char *queries_file, int k = 10) {
@@ -56,6 +58,21 @@ double get_recall_compressed(gt_type& gt, char *inserts_file, char *queries_file
 	return recall;
 }
 
+double get_ball(gtd_type& gtd, double ball_size, int k, int overret) {
+	double point_count = 0;
+	for (int i = 0; i < gtd.size(); i++) {
+		auto ball_radius = std::make_pair<uint32_t, float>(0, gtd[i][k - 1].second * ball_size);
+		size_t j = 0;
+		while (gtd[i][j].second >= ball_radius.second) j++;
+		/*size_t j = std::upper_bound(gtd[i].begin(), gtd[i].end(), ball_radius, [] (std::pair<uint32_t, float>& a, std::pair<uint32_t, float>& b) -> bool {
+			return a.second > b.second;
+		}) - gtd[i].begin();*/
+
+		point_count += j;
+	}
+	return point_count / gtd.size();
+}
+
 int main(int argc, char **argv) {
 	if (argc < 3) {
 		std::cout << "Usage: " << argv[0] << " [inserts csr file] [queries csr file]" << std::endl;
@@ -64,8 +81,20 @@ int main(int argc, char **argv) {
 	int k = 10;
 	forward_index<float> inserts(argv[1], "csr");
 	forward_index<float> queries(argv[2], "csr");
-	gt_type gt = ground_truth(inserts, queries, k);
+	//gt_type gt = ground_truth(inserts, queries, k);
+	gtd_type gtd = ground_truth_with_distances(inserts, queries, 100000);
+	float ball_sizes[6] = {0.1, 0.25, 0.5, 1, 2, 4};
+	double point_counts[6];
+	parlay::parallel_for(0, 6, [&] (size_t i) {
+		double ball_size = 1.0 / (ball_sizes[i] + 1);
+		point_counts[i] = get_ball(gtd, ball_size, k, 100000);
+	}, 1);
+	for(int i = 0; i < 6; i++) {
+		double ball_size = 1.0 / (ball_sizes[i] + 1);
+		std::cout << "for E = " << ball_sizes[i] << ": " << point_counts[i] << std::endl;
+	}
+
 
 	//get_recall_linscan(gt, argv[1], argv[2], 10);
-	get_recall_compressed(gt, argv[1], argv[2], 10);
+	//get_recall_compressed(gt, argv[1], argv[2], 10);
 }

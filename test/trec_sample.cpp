@@ -1,4 +1,4 @@
-#include <iostream>
+/*#include <iostream>
 #include <cstdio>
 #include <fstream>
 #include <strings.h>
@@ -52,4 +52,46 @@ int main(int argc, char **argv) {
 	writer.close();
 
 	return 0;
+}*/
+
+#include <iostream>
+#include <chrono>
+#include <immintrin.h> // for AVX
+#include <bitset>
+
+// Function to measure AVX operations
+void test_avx() {
+    volatile __m256 a = _mm256_set1_ps(1.0f);
+    volatile __m256 b = _mm256_set1_ps(2.0f);
+    volatile __m256 c;
+
+    for (int i = 0; i < 1000000; ++i) {
+        c = _mm256_add_ps(a, b);
+    }
+}
+
+// Function to measure popcount operations
+void test_popcount() {
+    volatile int count = 0;
+    for (int i = 0; i < 1000000; ++i) {
+        count += __builtin_popcount(i);
+    }
+}
+
+int main() {
+    // Measure time for AVX operations
+    auto start_avx = std::chrono::high_resolution_clock::now();
+    test_avx();
+    auto end_avx = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration_avx = end_avx - start_avx;
+    std::cout << "Time taken for 1,000,000 AVX operations: " << duration_avx.count() << " seconds" << std::endl;
+
+    // Measure time for popcount operations
+    auto start_popcount = std::chrono::high_resolution_clock::now();
+    test_popcount();
+    auto end_popcount = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration_popcount = end_popcount - start_popcount;
+    std::cout << "Time taken for 1,000,000 popcount operations: " << duration_popcount.count() << " seconds" << std::endl;
+
+    return 0;
 }
