@@ -15,14 +15,55 @@
 
 #include <immintrin.h>
 
-#define TEST 4
+#include "../include/count_min_sketch.h"
+
+
+parlay::sequence<int> rankify(const parlay::sequence<float>& vec) {
+    auto n = vec.size();
+    parlay::sequence<std::pair<float, int>> pair_vec(n);
+    parlay::parallel_for(0, n, [&](size_t i) {
+        pair_vec[i] = std::make_pair(vec[i], i);
+    });
+
+    parlay::sort_inplace(pair_vec);
+
+    parlay::sequence<int> ranks(n);
+    parlay::parallel_for(0, n, [&](size_t i) {
+        ranks[pair_vec[i].second] = i + 1;
+    });
+
+    return ranks;
+}
+
+double spearman_rank_correlation(const parlay::sequence<float>& original, const parlay::sequence<float>& quantized) {
+    if (original.size() != quantized.size()) {
+        throw std::invalid_argument("Sequences must be of the same length");
+    }
+
+    auto n = original.size();
+    auto rank_original = rankify(original);
+    auto rank_quantized = rankify(quantized);
+
+    auto d_sum = parlay::reduce(parlay::delayed_map(parlay::iota(n), [&](size_t i) {
+        double d = static_cast<double>(rank_original[i]) - static_cast<double>(rank_quantized[i]);
+        return d * d;
+    }));
+
+    double spearman_rho = 1 - (6 * d_sum) / (n * (n * n - 1));
+    return spearman_rho;
+}
+
 
 int main(int argc, char **argv) {
 	int k = 10;
-	int overretrievals[10] = {1, 2, 5, 10, 20, 50, 100, 200, 500, 1000};
-	for (int i = 0; i < sizeof(overretrievals) / sizeof(overretrievals[0]); i++) {
+	int overretrievals[7] = {1, 2, 5, 10, 20, 50, 100};
+    int num_overretrievals = sizeof(overretrievals) / sizeof(overretrievals[0]);
+	for (int i = 0; i < num_overretrievals; i++) {
 		overretrievals[i] *= k;
 	}
+    int max_overretrieval = overretrievals[num_overretrievals - 1];
+    int num_evals = 100;
+    int eval_sample = 1000;
 
     srand(time(NULL));
     parlay::internal::timer timer;
@@ -31,86 +72,112 @@ int main(int argc, char **argv) {
     std::cout << "Reading input files...\t" << std::flush;
 	forward_index<float> inserts, queries;
     inserts = forward_index<float>("data/base_small.csr", "csr");
-    queries = forward_index<float>("data/queries.dev.csr", "csr");
+    queries = forward_index<float>("data/queries.dev.csr", "csr", 1000);
     std::cout << "Done in " << timer.next_time() << " seconds" << std::endl;
 
     std::cout << "Computing ground truth of inputs...\t" << std::flush;
-	parlay::sequence<parlay::sequence<std::pair<uint32_t, float>>> gtd;
-    gtd = ground_truth_with_distances(inserts, queries, k);
+    auto gt = ground_truth(inserts, queries, k);
     std::cout << "Done in " << timer.next_time() << " seconds" << std::endl;
 
-    coord_order order("data/process/reorder/base_small_100000.ord", "ord");
-    int comp_dims = 1400;
-    timer.next_time();
-    std::cout << "Applying reordering and compressing to " + std::to_string(comp_dims) + " dims...\t" << std::flush;
-    inserts.reorder_dims(order.order_map);
-    inserts = forward_index<float>::group_and_max(inserts, comp_dims);
-    queries.reorder_dims(order.order_map);
-    queries = forward_index<float>::group_and_max(queries, comp_dims);
-    std::cout << "Done in " << timer.next_time() << " seconds" << std::endl;
-
-    // convert sparse vectors into nonzero bitvectors
-    std::cout << "Constructing bitvector representations of vectors...\t" << std::flush;
-    auto bitvectors = parlay::sequence<bitvector>::from_function(inserts.size(), [&] (size_t i) {
-            auto bits = bitvector(DIV_ROUND_UP(inserts.size(), 256) * 256);
-            bits.size = inserts.size();
-            for (int j = 0; j < inserts.points[i].size(); j++) {
-                bits.set(inserts.points[i][j].first);
-            }
-            return bits;
+    std::cout << "Computing sample distances...\t" << std::flush;
+    auto distances = parlay::sequence<parlay::sequence<float>>::from_function(num_evals, [&] (size_t i) {
+        return  parlay::sequence<float>::from_function(eval_sample, [&] (size_t j) {
+            return forward_index<float>::dist(queries.points[i], inserts.points[j]);
         });
+    });
+    std::cout << "Done in " << timer.next_time() << " seconds" << std::endl << std::endl << std::endl;
+
+    // COUNT MIN SKETCH
+    size_t count_min_quant_dims = 200;
+    std::cout << "Generating count min sketch of dimension " << count_min_quant_dims << "...\t" << std::flush;
+    auto count_min_sketch_200 = count_min_sketch(inserts.dims, count_min_quant_dims);
+    auto count_min_inserts = forward_index<float>(quant_dims);
+    auto count_min_queries = forward_index<float>(quant_dims);
+    count_min_inserts.points = parlay::sequence<parlay::sequence<std::pair<uint32_t, float>>>::from_function(inserts.size(), [&] (size_t i) {
+        auto qvec = count_min_sketch_200.transform_csr_to_qvec(inserts.points[i]);
+        return count_min_sketch_200.transform_qvec_to_qcsr(qvec);
+    });
+    count_min_queries.points = parlay::sequence<parlay::sequence<std::pair<uint32_t, float>>>::from_function(queries.size(), [&] (size_t i) {
+        auto qvec = count_min_sketch_200.transform_csr_to_qvec(queries.points[i]);
+        return count_min_sketch_200.transform_qvec_to_qcsr(qvec);
+    });
+    std::cout << "Done in " << timer.next_time() << " seconds" << std::endl << std::endl;
+    
+    std::cout << "Computing ground truth of count min sketch...\t" << std::flush;
+    auto count_min_gt = ground_truth(count_min_inserts, count_min_queries, max_overretrieval);
     std::cout << "Done in " << timer.next_time() << " seconds" << std::endl;
-
-    // pick a few random queries
-    // find the true mips distances between all points and the queries
-    // find the approximate mips distances between all points and the queries
-    // in particular, want to somehow evaluate the quality of the embedding in terms of its ability to preserve order of distances
-
-    const size_t num_samples = 10;
-    double exact_time = 0, approx_time = 0;
-    for (int _num_samples = 0; _num_samples < num_samples; _num_samples++) {
-        size_t sample_index = rand() % queries.size();
-        auto& sample_query = queries.points[sample_index];
-        auto query_bitvector = avx_bitvector::from_csr_vector(inserts.dims, queries.points[sample_index]);
-        auto distances = std::make_pair<parlay::sequence<float>::uninitialized(inserts.size()), parlay::sequence<uint32_t>::uninitialized(inserts.size())>;
-        
-        timer.next_time();
-        parlay::parallel_for(0, inserts.size(), [&] (size_t i) {
-                distances.first[i] = inserts.dist(sample_query, inserts.points[i]);
-            });
-        exact_time += timer.next_time();
-
-        parlay::parallel_for(0, inserts.size(), [&] (size_t i) {
-                distances.second[i] = bitvectors[i].mips(query_bitvector);
-            });
+    for (int i = 0; i < num_overretrievals; i++) {
+        double recall = get_recall(gt, count_min_gt, k, overretrievals[i]);
+        std::cout << "Recall " << k << "@" << overretrievals[i] << ":\t" << recall << std::endl;
     }
+    std::cout << std::endl;
 
-	parlay::sequence<parlay::sequence<std::pair<uint32_t, float>>> tgtd;
-	time_function("Computing ground truth of transformed inputs", [&] () {
-		tgtd = ground_truth_with_distances(inserts, queries, overretrievals[(sizeof(overretrievals) / sizeof(overretrievals[0])) - 1]);
-	});
+    double avg_spearman_rank = 0, min_spearman_rank = 1, max_spearman_rank = -1;
+    for (int i = 0; i < num_evals; i++) {
+        std::cout << "\rComputing Spearman's rank correlation coefficients...\t" << i << "/" << num_evals << std::flush;
 
-	auto gt = parlay::sequence<parlay::sequence<uint32_t>>::from_function(gtd.size(), [&] (size_t i) {
-		return parlay::sequence<uint32_t>::from_function(gtd[i].size(), [&] (size_t j) {
-			return gtd[i][j].first;
-		});
-	});
-	auto tgt = parlay::sequence<parlay::sequence<uint32_t>>::from_function(tgtd.size(), [&] (size_t i) {
-		return parlay::sequence<uint32_t>::from_function(tgtd[i].size(), [&] (size_t j) {
-			return tgtd[i][j].first;
-		});
-	});
+        auto distances = parlay::sequence<float>::from_function(eval_sample, [&] (size_t j) {
+            return forward_index<float>::dist(queries.points[i], inserts.points[j]);
+        });
+        auto count_min_distances = parlay::sequence<float>::from_function(eval_sample, [&] (size_t j) {
+            return forward_index<float>::dist(count_min_queries.points[i], count_min_inserts.points[j]);
+        });
 
-	for (int overret : overretrievals) {
-		double recall = get_recall(gt, tgt, k, overret);
-		std::cout << "Recall " << overret << "@" << k << ":   \t" << recall << std::endl;
-	}
+        double spearman_rank = spearman_rank_correlation(distances, count_min_distances);
+        avg_spearman_rank += spearman_rank;
+        if (spearman_rank < min_spearman_rank) min_spearman_rank = spearman_rank;
+        if (spearman_rank > max_spearman_rank) max_spearman_rank = spearman_rank;
+    }
+    avg_spearman_rank /= num_evals;
+    std::cout << "\rComputing Spearman's rank correlation coefficients...\t" << num_evals << "/" << num_evals << " in " << timer.next_time() << " seconds" << std::endl;
+    std::cout << "Min:\t" << min_spearman_rank << std::endl;
+    std::cout << "Avg:\t" << avg_spearman_rank << std::endl;
+    std::cout << "Max:\t" << max_spearman_rank << std::endl << std::endl;
 
-	/*exit(0);
+    // SINNAMON
+    size_t quant_dims = 200;
+    std::cout << "Generating Sinnamon sketch of dimension " << quant_dims << "...\t" << std::flush;
+    auto count_min_sketch_200 = count_min_sketch(inserts.dims, quant_dims);
+    auto count_min_inserts = forward_index<float>(quant_dims);
+    auto count_min_queries = forward_index<float>(quant_dims);
+    count_min_inserts.points = parlay::sequence<parlay::sequence<std::pair<uint32_t, float>>>::from_function(inserts.size(), [&] (size_t i) {
+        auto qvec = count_min_sketch_200.transform_csr_to_qvec(inserts.points[i]);
+        return count_min_sketch_200.transform_qvec_to_qcsr(qvec);
+    });
+    count_min_queries.points = parlay::sequence<parlay::sequence<std::pair<uint32_t, float>>>::from_function(queries.size(), [&] (size_t i) {
+        auto qvec = count_min_sketch_200.transform_csr_to_qvec(queries.points[i]);
+        return count_min_sketch_200.transform_qvec_to_qcsr(qvec);
+    });
+    std::cout << "Done in " << timer.next_time() << " seconds" << std::endl << std::endl;
+    
+    std::cout << "Computing ground truth of Sinnamon sketch...\t" << std::flush;
+    auto count_min_gt = ground_truth(count_min_inserts, count_min_queries, max_overretrieval);
+    std::cout << "Done in " << timer.next_time() << " seconds" << std::endl;
+    for (int i = 0; i < num_overretrievals; i++) {
+        double recall = get_recall(gt, count_min_gt, k, overretrievals[i]);
+        std::cout << "Recall " << k << "@" << overretrievals[i] << ":\t" << recall << std::endl;
+    }
+    std::cout << std::endl;
 
-	double target_recall = 0.9;
-	std::cout << "Target recall:\t" << target_recall << std::endl;
-	uint64_t target_found = queries.size() * k * target_recall, total_found = 0;
-	std::vector<int> num_not_found(queries.size(), k);*/
-	
+    double avg_spearman_rank = 0, min_spearman_rank = 1, max_spearman_rank = -1;
+    for (int i = 0; i < num_evals; i++) {
+        std::cout << "\rComputing Spearman's rank correlation coefficients...\t" << i << "/" << num_evals << std::flush;
+
+        auto distances = parlay::sequence<float>::from_function(eval_sample, [&] (size_t j) {
+            return forward_index<float>::dist(queries.points[i], inserts.points[j]);
+        });
+        auto count_min_distances = parlay::sequence<float>::from_function(eval_sample, [&] (size_t j) {
+            return forward_index<float>::dist(count_min_queries.points[i], count_min_inserts.points[j]);
+        });
+
+        double spearman_rank = spearman_rank_correlation(distances, count_min_distances);
+        avg_spearman_rank += spearman_rank;
+        if (spearman_rank < min_spearman_rank) min_spearman_rank = spearman_rank;
+        if (spearman_rank > max_spearman_rank) max_spearman_rank = spearman_rank;
+    }
+    avg_spearman_rank /= num_evals;
+    std::cout << "\rComputing Spearman's rank correlation coefficients...\t" << num_evals << "/" << num_evals << " in " << timer.next_time() << " seconds" << std::endl;
+    std::cout << "Min:\t" << min_spearman_rank << std::endl;
+    std::cout << "Avg:\t" << avg_spearman_rank << std::endl;
+    std::cout << "Max:\t" << max_spearman_rank << std::endl << std::endl;
 }

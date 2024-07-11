@@ -41,6 +41,17 @@ struct count_min_sketch {
         }
         return qvec;
     }
+
+    template <typename T>
+    parlay::sequence<std::pair<uint32_t, T>> transform_qvec_to_qcsr(parlay::sequence<T>& vec) {
+        parlay::sequence<std::pair<uint32_t, T>> qcsr;
+        for (uint32_t i = 0; i < vec.size(); i++) {
+            if (vec[i]) {
+                qcsr.push_back(std::make_pair(i, vec[i]));
+            }
+        }
+        return qcsr;
+    }
 };
 
 #endif

@@ -89,6 +89,26 @@ double get_recall(parlay::sequence<parlay::sequence<id_type>>& ground_truth, par
 }
 
 
+template <typename id_type, typename val_type>
+double get_recall(parlay::sequence<parlay::sequence<std::pair<id_type, val_type>>>& ground_truth, parlay::sequence<parlay::sequence<std::pair<id_type, val_type>>>& neighbors, int k1 = 10, int k2 = 10) {
+	uint64_t to_find = 0, found = 0;
+	int num_queries = std::min(ground_truth.size(), neighbors.size());
+	int i;
+	for (i = 0; i < num_queries; i++) {
+		to_find += std::min(k1, (int)ground_truth[i].size());
+		for (int j = 0; j < std::min(k1, (int)ground_truth[i].size()); j++) {
+			for (int l = 0; l < std::min(k2, (int)neighbors[i].size()); l++) {
+				if (neighbors[i][l].first == ground_truth[i][j].first) {
+					found++;
+					break;
+				}
+			}
+		}
+	}
+	return (double)found / to_find;
+}
+
+
 /*parlay::sequence<parlay::sequence<id_type>> ground_truth(parlay::sequence<avx_bitvector>& inserts, parlay::sequence<avx_bitvector>& queries, int k = 10) {
     parlay::sequence<parlay::sequence<uint32_t>> posting_lists(inserts[0].size);
     for (uint32_t i = 0; i < inserts.size(); i++) {

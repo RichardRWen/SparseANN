@@ -26,6 +26,7 @@ set(TEST_FILES
 	apply_ordering.cpp
 	mips_histogram.cpp
 	compare_dist.cpp
+    eval_dist_approx.cpp
 )
 
 foreach(TEST_FILE ${TEST_FILES})
