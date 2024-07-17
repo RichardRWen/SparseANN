@@ -27,6 +27,8 @@ set(TEST_FILES
 	mips_histogram.cpp
 	compare_dist.cpp
     eval_dist_approx.cpp
+    bfs_tree_graph.cpp
+    bfs_tree_donut.cpp
 )
 
 foreach(TEST_FILE ${TEST_FILES})
