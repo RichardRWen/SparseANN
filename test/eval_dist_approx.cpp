@@ -142,6 +142,7 @@ int main(int argc, char **argv) {
 
 
     std::cout << std::endl << std::endl << "=== COUNT MIN SKETCH ===" << std::endl;
+    timer.next_time();
     size_t count_min_quant_dims = 200;
     std::cout << "Generating count min sketch of dimension " << count_min_quant_dims << "...\t" << std::flush;
     auto count_min_sketch_200 = count_min_sketch(inserts.dims, count_min_quant_dims);
@@ -161,6 +162,7 @@ int main(int argc, char **argv) {
 
 
     std::cout << std::endl << std::endl << "=== SINNAMON SKETCH ===" << std::endl;
+    timer.next_time();
     size_t sinnamon_quant_dims = 200;
     std::cout << "Generating sinnamon sketch of dimension " << sinnamon_quant_dims << "...\t" << std::flush;
     auto sinnamon_sketch_200 = sinnamon_sketch(inserts.dims, sinnamon_quant_dims);
@@ -177,4 +179,24 @@ int main(int argc, char **argv) {
     std::cout << "Done in " << timer.next_time() << " seconds" << std::endl;
 
     evaluate_transformation("sinnamon sketch", sinnamon_inserts, sinnamon_queries, groundtruth, distances, params);
+
+
+    std::cout << std::endl << std::endl << "=== 0/1 BITVECTOR ===" << std::endl;
+    timer.next_time();
+    std::cout << "Converting all nonzero coords to 1...\t" << std::flush;
+    auto bitvector_inserts = forward_index<float>::copy(inserts);
+    auto bitvector_queries = forward_index<float>::copy(queries);
+    parlay::parallel_for(0, bitvector_inserts.size(), [&] (size_t i) {
+        for (int j = 0; j < bitvector_inserts[i].size(); j++) {
+            bitvector_inserts[i][j].second = 1;
+        }
+    });
+    parlay::parallel_for(0, bitvector_queries.size(), [&] (size_t i) {
+        for (int j = 0; j < bitvector_queries[i].size(); j++) {
+            bitvector_queries[i][j].second = 1;
+        }
+    });
+    std::cout << "Done in " << timer.next_time() << " seconds" << std::endl;
+
+    evaluate_transformation("0/1 bitvector", bitvector_inserts, bitvector_queries, groundtruth, distances, params);
 }
