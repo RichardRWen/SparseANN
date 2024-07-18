@@ -204,6 +204,10 @@ public:
 		return grouped;
 	}
 
+    point_t& operator [] (size_t i) {
+        return points[i];
+    }
+
 	template <typename T>
 	void reorder_dims(parlay::sequence<T>& map) {
 		assert(map.size() >= dims);
