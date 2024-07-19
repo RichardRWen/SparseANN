@@ -115,8 +115,8 @@ int main(int argc, char **argv) {
 	}
     params.overretrievals = overretrievals;
     params.max_overretrieval = overretrievals[params.num_overretrievals - 1];
-    params.num_evals = 100;
-    params.eval_sample = 1000;
+    params.num_evals = 1000;
+    params.eval_sample = 1000000;
 
     srand(time(NULL));
     parlay::internal::timer timer;
@@ -125,8 +125,9 @@ int main(int argc, char **argv) {
     std::cout << "Reading input files...\t" << std::flush;
 	forward_index<float> inserts, queries;
     inserts = forward_index<float>("data/base_small.csr", "csr");
-    queries = forward_index<float>("data/queries.dev.csr", "csr", 1000);
+    queries = forward_index<float>("data/queries.dev.csr", "csr");
     std::cout << "Done in " << timer.next_time() << " seconds" << std::endl;
+    if (inserts.size() < params.eval_sample) params.eval_sample = inserts.size();
 
     std::cout << "Computing ground truth of inputs...\t" << std::flush;
     auto groundtruth = ground_truth(inserts, queries, params.k);
@@ -139,6 +140,26 @@ int main(int argc, char **argv) {
         });
     });
     std::cout << "Done in " << timer.next_time() << " seconds" << std::endl;
+
+
+    std::cout << std::endl << std::endl << "=== 0/1 BITVECTOR ===" << std::endl;
+    timer.next_time();
+    std::cout << "Converting all nonzero coords to 1...\t" << std::flush;
+    auto bitvector_inserts = forward_index<float>::copy(inserts);
+    auto bitvector_queries = forward_index<float>::copy(queries);
+    parlay::parallel_for(0, bitvector_inserts.size(), [&] (size_t i) {
+        for (int j = 0; j < bitvector_inserts[i].size(); j++) {
+            bitvector_inserts[i][j].second = 1;
+        }
+    });
+    parlay::parallel_for(0, bitvector_queries.size(), [&] (size_t i) {
+        for (int j = 0; j < bitvector_queries[i].size(); j++) {
+            bitvector_queries[i][j].second = 1;
+        }
+    });
+    std::cout << "Done in " << timer.next_time() << " seconds" << std::endl;
+
+    evaluate_transformation("0/1 bitvector", bitvector_inserts, bitvector_queries, groundtruth, distances, params);
 
 
     std::cout << std::endl << std::endl << "=== COUNT MIN SKETCH ===" << std::endl;
@@ -179,24 +200,4 @@ int main(int argc, char **argv) {
     std::cout << "Done in " << timer.next_time() << " seconds" << std::endl;
 
     evaluate_transformation("sinnamon sketch", sinnamon_inserts, sinnamon_queries, groundtruth, distances, params);
-
-
-    std::cout << std::endl << std::endl << "=== 0/1 BITVECTOR ===" << std::endl;
-    timer.next_time();
-    std::cout << "Converting all nonzero coords to 1...\t" << std::flush;
-    auto bitvector_inserts = forward_index<float>::copy(inserts);
-    auto bitvector_queries = forward_index<float>::copy(queries);
-    parlay::parallel_for(0, bitvector_inserts.size(), [&] (size_t i) {
-        for (int j = 0; j < bitvector_inserts[i].size(); j++) {
-            bitvector_inserts[i][j].second = 1;
-        }
-    });
-    parlay::parallel_for(0, bitvector_queries.size(), [&] (size_t i) {
-        for (int j = 0; j < bitvector_queries[i].size(); j++) {
-            bitvector_queries[i][j].second = 1;
-        }
-    });
-    std::cout << "Done in " << timer.next_time() << " seconds" << std::endl;
-
-    evaluate_transformation("0/1 bitvector", bitvector_inserts, bitvector_queries, groundtruth, distances, params);
 }

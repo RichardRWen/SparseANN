@@ -103,12 +103,12 @@ int main(int argc, char **argv) {
 	case 5: { // marking only nonzeros
 		time_function("Applying transformation - only marking nonzeros", [&] () {
             parlay::parallel_for(0, inserts.points.size(), [&] (size_t i) {
-                for (size_t j = 0; j < inserts.points[i].size(); i++) {
+                for (size_t j = 0; j < inserts.points[i].size(); j++) {
                     inserts.points[i][j].second = 1;
                 }
             });
             parlay::parallel_for(0, queries.points.size(), [&] (size_t i) {
-                for (size_t j = 0; j < queries.points[i].size(); i++) {
+                for (size_t j = 0; j < queries.points[i].size(); j++) {
                     queries.points[i][j].second = 1;
                 }
             });
