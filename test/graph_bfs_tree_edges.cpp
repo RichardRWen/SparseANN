@@ -5,18 +5,20 @@
 #include <fstream>
 
 #include <unordered_set>
+#include <unordered_map>
 
 #include <parlay/sequence.h>
 #include <parlay/primitives.h>
 #include <parlay/parallel.h>
 
 int main(int argc, char **argv) {
-    int hole = atoi(argv[1]);
-
-    uint32_t n, d;
     std::string path = "data/graph/base_1M_64_128";
+    if (argc > 1) {
+        path = argv[1];
+    }
     std::ifstream reader(path);
 
+    uint32_t n, d;
     reader.read((char*)&n, sizeof(uint32_t));
     reader.read((char*)&d, sizeof(uint32_t));
 
@@ -30,48 +32,28 @@ int main(int argc, char **argv) {
         edges.push_back(edge_list);
     }
 
+    std::unordered_map<uint32_t, uint32_t> level_map;
     std::unordered_set<uint32_t> visited;
-    std::unordered_set<uint32_t> fringe;
+    std::vector<std::unordered_set<uint32_t>> levels;
     visited.insert(0);
-    fringe.insert(0);
-
-    std::cout << "Creating donut from level " << hole << "..." << std::endl;
-    for (int i = 0; i < hole; i++) {
-        std::unordered_set<uint32_t> new_fringe;
-        for (uint32_t node : fringe) {
-            for (uint32_t neighbor : edges[node]) {
-                if (visited.count(neighbor) == 0) {
-                    visited.insert(neighbor);
-                    new_fringe.insert(neighbor);
-                }
-            }
-        }
-        fringe = new_fringe;
-    }
-
-    fringe.clear();
-    while (true) {
-        uint32_t start = rand() % n;
-        if (visited.count(start) == 0) {
-            fringe.insert(start);
-            break;
-        }
-    }
+    level_map[0] = 0;
+    levels.push_back(std::unordered_set<uint32_t>());
+    levels[0].insert(0);
 
     std::cout << "Searching BFS tree..." << std::endl << "Level 0 has 1 node" << std::endl;
     int level = 0;
-    while (fringe.size() > 0) {
-        std::unordered_set<uint32_t> new_fringe;
-        for (uint32_t node : fringe) {
+    while (levels[levels.size() - 1].size() > 0) {
+        levels.push_back(std::unordered_set<uint32_t>());
+        for (uint32_t node : levels[levels.size() - 2]) {
             for (uint32_t neighbor : edges[node]) {
                 if (visited.count(neighbor) == 0) {
                     visited.insert(neighbor);
-                    new_fringe.insert(neighbor);
+                    levels[levels.size() - 1].insert(neighbor);
+                    level_map[neighbor] = levels.size() - 1;
                 }
             }
         }
-        std::cout << "Level " << (++level) << " has " << new_fringe.size() << " nodes" << std::endl;
-        fringe = new_fringe;
+        std::cout << "Level " << (levels.size() - 1) << " has " << levels[levels.size() - 1].size() << " nodes" << std::endl;
     }
     std::cout << "There are " << n - visited.size() << " unreachable nodes" << std::endl;
 

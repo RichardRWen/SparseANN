@@ -29,6 +29,7 @@ set(TEST_FILES
     eval_dist_approx.cpp
     graph_bfs_tree.cpp
     graph_bfs_tree_donut.cpp
+    graph_bfs_tree_edges.cpp
 )
 
 foreach(TEST_FILE ${TEST_FILES})

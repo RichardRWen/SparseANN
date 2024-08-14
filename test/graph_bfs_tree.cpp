@@ -11,10 +11,13 @@
 #include <parlay/parallel.h>
 
 int main(int argc, char **argv) {
-    uint32_t n, d;
-    std::string path = "data/graph/base_1M_64_128";
+    std::string path = "data/graph/base_full_64_128";
+    if (argc > 1) {
+        path = argv[1];
+    }
     std::ifstream reader(path);
 
+    uint32_t n, d;
     reader.read((char*)&n, sizeof(uint32_t));
     reader.read((char*)&d, sizeof(uint32_t));
 

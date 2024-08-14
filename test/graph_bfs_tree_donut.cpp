@@ -11,12 +11,18 @@
 #include <parlay/parallel.h>
 
 int main(int argc, char **argv) {
+    if (argc < 2) {
+        std::cout << "Usage: " << argv[0] << " [radius of hole] [optional graph path]" << std::endl;
+        exit(0);
+    }
     int hole = atoi(argv[1]);
-
-    uint32_t n, d;
-    std::string path = "data/graph/base_1M_64_128";
+    std::string path = "data/graph/base_full_64_128";
+    if (argc > 2) {
+        path = argv[2];
+    }
     std::ifstream reader(path);
 
+    uint32_t n, d;
     reader.read((char*)&n, sizeof(uint32_t));
     reader.read((char*)&d, sizeof(uint32_t));
 

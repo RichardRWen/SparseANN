@@ -35,6 +35,8 @@ int main(int argc, char **argv) {
 	index_reader.seekg((num_vecs + 4) * sizeof(uint64_t));
 	value_reader.seekg((num_vecs + 4) * sizeof(uint64_t) + num_vals * sizeof(uint32_t));
 
+    std::cout << "Found " << num_vecs << " vectors of dim " << num_dims << std::endl;
+
 	// READ VECTOR
 	writer.write((char*)(&num_vecs), sizeof(uint32_t));
 	writer.write((char*)(&num_dims), sizeof(uint32_t));
