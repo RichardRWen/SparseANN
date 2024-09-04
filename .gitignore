@@ -6,3 +6,4 @@ Graph-Compression/
 *.swp
 log.txt
 backup*
+.vscode

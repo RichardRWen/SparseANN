@@ -15,8 +15,11 @@
 
 #include <immintrin.h>
 
+#include "../include/vector_utils.h"
 #include "../include/count_min_sketch.h"
 #include "../include/sinnamon_sketch.h"
+#include "../include/jl_transform.h"
+#include "../include/rabitq.h"
 
 
 parlay::sequence<int> rankify(const parlay::sequence<float>& vec) {
@@ -124,7 +127,7 @@ int main(int argc, char **argv) {
 
     std::cout << "Reading input files...\t" << std::flush;
 	forward_index<float> inserts, queries;
-    inserts = forward_index<float>("data/base_small.csr", "csr");
+    inserts = forward_index<float>("data/base_small.csr", "csr", 10000);
     queries = forward_index<float>("data/queries.dev.csr", "csr");
     std::cout << "Done in " << timer.next_time() << " seconds" << std::endl;
     if (inserts.size() < params.eval_sample) params.eval_sample = inserts.size();
@@ -140,6 +143,129 @@ int main(int argc, char **argv) {
         });
     });
     std::cout << "Done in " << timer.next_time() << " seconds" << std::endl;
+
+    
+    size_t popularity_cutoff = 64;
+    std::cout << std::endl << std::endl << "=== " << popularity_cutoff << " POPULAR DIMENSIONS ===" << std::endl;
+    timer.next_time();
+    std::cout << "Sorting dimensions by popularity...\t" << std::flush;
+    std::vector<std::atomic<uint32_t>> popularity_counts(inserts.dims);
+    parlay::parallel_for(0, inserts.size(), [&] (size_t i) {
+        for (int j = 0; j < inserts[i].size(); j++) {
+            popularity_counts[inserts[i][j].first]++;
+        }
+    });
+    auto order_by_popularity = parlay::sequence<uint32_t>::from_function(inserts.size(), [] (size_t i) { return i; });
+    parlay::sort_inplace(order_by_popularity, [&] (uint32_t a, uint32_t b) { return popularity_counts[a] > popularity_counts[b]; });
+    auto popularity_rankings = parlay::sequence<uint32_t>::uninitialized(inserts.size());
+    parlay::parallel_for(0, inserts.size(), [&] (size_t i) {
+        popularity_rankings[order_by_popularity[i]] = i;
+    });
+    std::cout << "Done in " << timer.next_time() << " seconds" << std::endl;
+    std::cout << "Top 10 dimensions by popularity:" << std::endl;
+    for (int i = 0; i < 10; i++) {
+        std::cout << order_by_popularity[i] << " with popularity " << popularity_counts[order_by_popularity[i]] << std::endl;
+    }
+    std::cout << "0.1 percentile: " << popularity_counts[order_by_popularity[inserts.dims / 1000]] << std::endl;
+
+    timer.next_time();
+    std::cout << "Reducing vectors to " << popularity_cutoff << " popular dimensions...\t" << std::flush;
+    auto pop_inserts = forward_index<float>(inserts.dims);
+    pop_inserts.points = parlay::sequence<parlay::sequence<std::pair<uint32_t, float>>>(inserts.size());
+    parlay::parallel_for(0, inserts.size(), [&] (size_t i) {
+        for (int j = 0; j < inserts[i].size(); j++) {
+            if (popularity_rankings[inserts[i][j].first] < popularity_cutoff) {
+                pop_inserts[i].push_back(inserts[i][j]);
+            }
+        }
+    });
+
+    evaluate_transformation("popular dimensions only", pop_inserts, queries, groundtruth, distances, params);
+
+    
+    popularity_cutoff = 256;
+    std::cout << std::endl << std::endl << "=== " << popularity_cutoff << " POPULAR DIMENSIONS ===" << std::endl;
+    timer.next_time();
+    std::cout << "Reducing vectors to " << popularity_cutoff << " popular dimensions...\t" << std::flush;
+    pop_inserts = forward_index<float>(inserts.dims);
+    pop_inserts.points = parlay::sequence<parlay::sequence<std::pair<uint32_t, float>>>(inserts.size());
+    parlay::parallel_for(0, inserts.size(), [&] (size_t i) {
+        for (int j = 0; j < inserts[i].size(); j++) {
+            if (popularity_rankings[inserts[i][j].first] < popularity_cutoff) {
+                pop_inserts[i].push_back(inserts[i][j]);
+            }
+        }
+    });
+
+    evaluate_transformation("popular dimensions only", pop_inserts, queries, groundtruth, distances, params);
+
+    
+    popularity_cutoff = 10000;
+    std::cout << std::endl << std::endl << "=== " << popularity_cutoff << " POPULAR DIMENSIONS ===" << std::endl;
+    timer.next_time();
+    std::cout << "Reducing vectors to " << popularity_cutoff << " popular dimensions...\t" << std::flush;
+    pop_inserts = forward_index<float>(inserts.dims);
+    pop_inserts.points = parlay::sequence<parlay::sequence<std::pair<uint32_t, float>>>(inserts.size());
+    parlay::parallel_for(0, inserts.size(), [&] (size_t i) {
+        for (int j = 0; j < inserts[i].size(); j++) {
+            if (popularity_rankings[inserts[i][j].first] < popularity_cutoff) {
+                pop_inserts[i].push_back(inserts[i][j]);
+            }
+        }
+    });
+
+    evaluate_transformation("popular dimensions only", pop_inserts, queries, groundtruth, distances, params);
+
+    
+    popularity_cutoff = 64;
+    std::cout << std::endl << std::endl << "=== MINUS " << popularity_cutoff << " POPULAR DIMENSIONS ===" << std::endl;
+    timer.next_time();
+    std::cout << "Reducing vectors to " << popularity_cutoff << " popular dimensions...\t" << std::flush;
+    pop_inserts = forward_index<float>(inserts.dims);
+    pop_inserts.points = parlay::sequence<parlay::sequence<std::pair<uint32_t, float>>>(inserts.size());
+    parlay::parallel_for(0, inserts.size(), [&] (size_t i) {
+        for (int j = 0; j < inserts[i].size(); j++) {
+            if (popularity_rankings[inserts[i][j].first] >= popularity_cutoff) {
+                pop_inserts[i].push_back(inserts[i][j]);
+            }
+        }
+    });
+
+    evaluate_transformation("unpopular dimensions only", pop_inserts, queries, groundtruth, distances, params);
+
+    
+    popularity_cutoff = 256;
+    std::cout << std::endl << std::endl << "=== MINUS " << popularity_cutoff << " POPULAR DIMENSIONS ===" << std::endl;
+    timer.next_time();
+    std::cout << "Reducing vectors to " << popularity_cutoff << " popular dimensions...\t" << std::flush;
+    pop_inserts = forward_index<float>(inserts.dims);
+    pop_inserts.points = parlay::sequence<parlay::sequence<std::pair<uint32_t, float>>>(inserts.size());
+    parlay::parallel_for(0, inserts.size(), [&] (size_t i) {
+        for (int j = 0; j < inserts[i].size(); j++) {
+            if (popularity_rankings[inserts[i][j].first] >= popularity_cutoff) {
+                pop_inserts[i].push_back(inserts[i][j]);
+            }
+        }
+    });
+
+    evaluate_transformation("unpopular dimensions only", pop_inserts, queries, groundtruth, distances, params);
+
+    
+    popularity_cutoff = 10000;
+    std::cout << std::endl << std::endl << "=== MINUS " << popularity_cutoff << " POPULAR DIMENSIONS ===" << std::endl;
+    timer.next_time();
+    std::cout << "Reducing vectors to " << popularity_cutoff << " popular dimensions...\t" << std::flush;
+    pop_inserts = forward_index<float>(inserts.dims);
+    pop_inserts.points = parlay::sequence<parlay::sequence<std::pair<uint32_t, float>>>(inserts.size());
+    parlay::parallel_for(0, inserts.size(), [&] (size_t i) {
+        for (int j = 0; j < inserts[i].size(); j++) {
+            if (popularity_rankings[inserts[i][j].first] >= popularity_cutoff) {
+                pop_inserts[i].push_back(inserts[i][j]);
+            }
+        }
+    });
+
+    evaluate_transformation("unpopular dimensions only", pop_inserts, queries, groundtruth, distances, params);
 
 
     std::cout << std::endl << std::endl << "=== 0/1 BITVECTOR ===" << std::endl;
@@ -200,4 +326,52 @@ int main(int argc, char **argv) {
     std::cout << "Done in " << timer.next_time() << " seconds" << std::endl;
 
     evaluate_transformation("sinnamon sketch", sinnamon_inserts, sinnamon_queries, groundtruth, distances, params);
+
+
+    std::cout << std::endl << std::endl << "=== JL TRANSFORM ===" << std::endl;
+    timer.next_time();
+    size_t jl_transform_dims = 1000;
+    std::cout << "Generating JL transform of dimension " << jl_transform_dims << "...\t" << std::flush;
+    auto projection_matrix = generate_random_projection_matrix(inserts.dims, jl_transform_dims);
+    forward_index<float> jl_inserts, jl_queries;
+    jl_inserts.dims = jl_queries.dims = jl_transform_dims;
+    jl_inserts.points = parlay::sequence<parlay::sequence<std::pair<uint32_t, float>>>::from_function(inserts.size(), [&] (size_t i) {
+        auto insert_vec = csr_to_vec(inserts[i], inserts.dims);
+        auto jl_transform = apply_jl_transform(insert_vec, projection_matrix);
+        return vec_to_csr(jl_transform);
+    });
+    jl_queries.points = parlay::sequence<parlay::sequence<std::pair<uint32_t, float>>>::from_function(queries.size(), [&] (size_t i) {
+        auto query_vec = csr_to_vec(queries[i], inserts.dims);
+        auto jl_transform = apply_jl_transform(query_vec, projection_matrix);
+        return vec_to_csr(jl_transform);
+    });
+    std::cout << "Done in " << timer.next_time() << " seconds" << std::endl;
+
+    evaluate_transformation("JL transform", jl_inserts, jl_queries, groundtruth, distances, params);
+
+    size_t jl_num_nonzeros = 0;
+    for (int i = 0; i < jl_inserts.size(); i++) {
+        jl_num_nonzeros += jl_inserts[i].size();
+    }
+    std::cout << "Average number of nonzeros: " << ((double)jl_num_nonzeros / jl_inserts.size()) << std::endl;
+
+
+    /*std::cout << std::endl << std::endl << "=== RABITQ ===" << std::endl;
+    timer.next_time();
+    std::cout << "Generating RaBitQ transform...\t" << std::flush;
+    forward_index<float> rabitq_inserts, rabitq_queries;
+    rabitq_inserts.dims = rabitq_queries.dims = inserts.dims;
+    rabitq_inserts.points = parlay::sequence<parlay::sequence<std::pair<uint32_t, float>>>::from_function(inserts.size(), [&] (size_t i) {
+        auto insert_vec = csr_to_vec(inserts[i], inserts.dims);
+        auto rabitq_transform = rabitq_quantize(insert_vec);
+        return vec_to_csr(rabitq_transform);
+    });
+    rabitq_queries.points = parlay::sequence<parlay::sequence<std::pair<uint32_t, float>>>::from_function(queries.size(), [&] (size_t i) {
+        auto query_vec = csr_to_vec(queries[i], inserts.dims);
+        auto rabitq_transform = rabitq_quantize(query_vec);
+        return vec_to_csr(rabitq_transform);
+    });
+    std::cout << "Done in " << timer.next_time() << " seconds" << std::endl;
+
+    evaluate_transformation("RaBitQ transform", rabitq_inserts, rabitq_queries, groundtruth, distances, params);*/
 }

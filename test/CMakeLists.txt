@@ -30,6 +30,9 @@ set(TEST_FILES
     graph_bfs_tree.cpp
     graph_bfs_tree_donut.cpp
     graph_bfs_tree_edges.cpp
+    triangle_inequality.cpp
+    count_freq_of_nearest_neighbors.cpp
+    jl_transform.cpp
 )
 
 foreach(TEST_FILE ${TEST_FILES})

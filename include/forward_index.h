@@ -315,6 +315,7 @@ public:
             writer.close();
             return true;
         }
+        return false;
 	}
 };
 
