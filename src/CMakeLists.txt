@@ -7,4 +7,4 @@ set(SOURCE_FILES
 
 add_library(SparseANNLibrary ${SOURCE_FILES})
 
-target_link_libraries(SparseANNLibrary PUBLIC Parlay::parlay)
+target_link_libraries(SparseANNLibrary PUBLIC)

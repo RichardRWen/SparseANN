@@ -5,3 +5,6 @@
 	path = SparseParlayANN
 	url = https://github.com/RichardRWen/SparseParlayANN.git
 	branch = pybindings
+[submodule "parlaylib"]
+	path = parlaylib
+	url = https://github.com/cmuparlay/parlaylib.git

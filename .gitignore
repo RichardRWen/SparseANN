@@ -1,6 +1,5 @@
 build/
 data/
-parlaylib
 data
 Graph-Compression/
 *.swp
