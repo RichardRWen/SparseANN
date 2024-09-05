@@ -8,13 +8,15 @@
 #include "utils/types.h"
 #include "utils/mips_point.h"
 #include "utils/point_range.h"
+#include "utils/sparse_mips_point.h"
+#include "utils/sparse_point_range.h"
 #include "utils/graph.h"
 #include "vamana/neighbors.h"
 
 using index_type = uint32_t;
 using value_type = float;
-using point_type = Mips_Point<value_type>;
-using point_range_type = PointRange<value_type, point_type>; // TODO: change both of these to Sparse versions
+using point_type = SparseMipsPoint<value_type>;
+using point_range_type = SparsePointRange<value_type, point_type>;
 
 int main(int argc, char* argv[]) {
     long k = 10;
