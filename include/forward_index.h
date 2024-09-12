@@ -41,6 +41,7 @@ public:
 		if (strcmp(filetype, "csr") == 0) {
 			std::ifstream indptr_reader(filename);
 			if (!indptr_reader.is_open()) {
+				std::cout << "Could not open file " << filename << std::endl;
 				return;
 			}
 			std::ifstream index_reader(filename);
@@ -79,6 +80,7 @@ public:
         else if (strcmp(filetype, "vec") == 0) {
             std::ifstream reader(filename);
             if (!reader.is_open()) {
+				std::cout << "Could not open file " << filename << std::endl;
                 return;
             }
             
@@ -204,6 +206,9 @@ public:
 		return grouped;
 	}
 
+    const point_t operator [] (size_t i) const {
+        return points[i];
+    }
     point_t& operator [] (size_t i) {
         return points[i];
     }
@@ -236,11 +241,11 @@ public:
 		reorder_dims(perm);
 	}
 
-	inline size_t size() {
+	inline size_t size() const {
 		return points.size();
 	}
 
-	static val_type dist(parlay::sequence<std::pair<uint32_t, val_type>>& p1, parlay::sequence<std::pair<uint32_t, val_type>>& p2) {
+	static val_type dist(const parlay::sequence<std::pair<uint32_t, val_type>>& p1, const parlay::sequence<std::pair<uint32_t, val_type>>& p2) {
 		val_type total = (val_type)0;
 		for (int i = 0, j = 0; i < p1.size() && j < p2.size(); ) {
 			if (p1[i].first < p2[j].first) i++;
