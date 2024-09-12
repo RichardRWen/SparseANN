@@ -17,6 +17,10 @@
 #include "forward_index.h"
 #include "point_range_util.h"
 
+#include "sinnamon_sketch.h"
+#include "count_min_sketch.h"
+#include "jl_transform.h"
+
 using index_type = uint32_t;
 using value_type = float;
 using point_type = SparseMipsPoint<value_type>;
@@ -62,12 +66,12 @@ int main(int argc, char* argv[]) {
     );
 
     char pr_file[] = "data/base_small.csr";
-    auto PR = point_range_type(pr_file);
+    auto PR_fi = forward_index<value_type>(pr_file, "csr");
+    auto PR = fi_to_spr<value_type, point_type>(PR_fi);
 
     char q_file[] = "data/queries.dev.csr";
-    //auto Q_fi = forward_index<value_type>(q_file, "csr");
-    //auto Q = fi_to_spr<value_type, point_type>(Q_fi);
-    auto Q = point_range_type(q_file);
+    auto Q_fi = forward_index<value_type>(q_file, "csr");
+    auto Q = fi_to_spr<value_type, point_type>(Q_fi);
 
     char gt_file[] = "data/base_small.dev.gt";
     auto GT = groundTruth<index_type>(gt_file);
