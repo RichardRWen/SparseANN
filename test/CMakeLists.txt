@@ -15,7 +15,11 @@ set(TEST_FILES
 	measure_recall.cpp
 	measure_overretrieval.cpp
     benchmark_bitvector.cpp
-	generate_dataset.cpp
+	generate_uniform.cpp
+    generate_barabasi_albert.cpp
+    generate_gaussian_mixture.cpp
+    generate_heatmap.cpp
+    generate_knn_points.cpp
 	high_freq_record.cpp
 	high_freq_convert.cpp
 	trec_sample.cpp
@@ -32,6 +36,7 @@ set(TEST_FILES
     graph_bfs_tree_edges.cpp
     triangle_inequality.cpp
     count_freq_of_nearest_neighbors.cpp
+    identify_clusters.cpp
     jl_transform.cpp
 )
 

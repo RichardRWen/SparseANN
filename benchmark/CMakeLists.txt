@@ -1,5 +1,7 @@
 set(BENCHMARK_FILES
 	parlayann_unit_test.cpp
+    parlayann_rand_test.cpp
+    generate_random.cpp
 )
 
 foreach(BENCHMARK_FILE ${BENCHMARK_FILES})
